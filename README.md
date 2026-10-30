@@ -11,27 +11,29 @@ Melodije so povzete po zapisu **Letna** (avtor Jože Mehle):
 ## Funkcije
 
 - **Predvajanje** melodije v zanki, s sprotnim označevanjem trenutne vrstice, stolpca, udarca in zvona.
-- **Tempo** v udarcih na minuto (privzeto 250).
+- **Tempo**: drsnik preklaplja med 150, 180, 200 in 250 udarci na minuto (privzeto 180). Vrednosti so v `TEMPOS` v `src/App.vue`.
 - **Igram zvon**: izbrani zvon je utišan, njegova linija je označena rumeno, igraš ga s preslednico. Če izbereš zvon 1, prvi pritisk preslednice začne melodijo v tempu.
 - **Počakaj name**: melodija se pred vsako tvojo noto ustavi in počaka na pritisk (100 ms tolerance, da ob pravočasnem udarcu ritem ostane nespremenjen).
 - **Glasnost spremljave (x)**: utišanje ali stišanje zvona, ki »gosti« (udarci x), tako da se sliši le vodilna melodija.
 - **Metronom** v taktu melodije (Mercinova 3/4, Štirka 4/4) in gumb **Samo metronom**.
 - **Uglasitev** zvonov: privzeto naši zvonovi (h1-6, a1-4, fis1-7, d1-8), za primerjavo še Te Deum in durov akord.
-- **Pogled**:
-  - *Bobnarske note*: kot v izvirnem zapisu, oštevilčeni kvadratki in x.
-  - *Sekvenca*: vsak zvon v svoji barvi, krog je udarec melodije, romb udarec spremljave, prazen krog premor, navpične črte ločujejo takte.
+- **Vrsta zapisa**:
+  - _Bobnarske note_: kot v izvirnem zapisu, oštevilčeni kvadratki in x.
+  - _Sekvenca_: vsak zvon v svoji barvi, krog je udarec melodije, romb udarec spremljave, prazen krog premor, navpične črte ločujejo takte.
+  - _Po Malavašiču_: vsaka vrstica je en krog zvona, ki začne; velika številka je zvon melodije, mala nadpisana številka zvon, ki gosti. Med predvajanjem se trenutna številka obarva v barvi zvona.
 
 ### Bližnjice
 
-| Tipka | Dejanje |
-|---|---|
+| Tipka       | Dejanje                                        |
+| ----------- | ---------------------------------------------- |
 | preslednica | udari izbrani zvon (na zvonu 1 začne melodijo) |
-| S | začni / ustavi |
-| Esc | ustavi |
-| 1–4 | izberi zvon, ki ga igraš |
-| 0 | vsi zvonovi igrajo |
-| P | počakaj name |
-| M | metronom |
+| S           | predvajaj / pavza                              |
+| ← →         | nota nazaj / naprej                            |
+| Esc         | ustavi (na začetek)                            |
+| 1–4         | izberi zvon, ki ga igraš                       |
+| 0           | vsi zvonovi igrajo                             |
+| P           | počakaj name                                   |
+| M           | metronom                                       |
 
 ## Zagon
 
@@ -77,11 +79,11 @@ Melodija je zaporedje udarcev. Vsak udarec je en stolpec v zapisu:
 V vsakem krogu melodijo začne naslednji zvon, zvon pred njim pa gosti in udarja x med vsako noto melodije:
 
 | Krog | Melodijo začne | Gosti (x) |
-|---|---|---|
-| 1 | zvon 1 | zvon 4 |
-| 2 | zvon 2 | zvon 1 |
-| 3 | zvon 3 | zvon 2 |
-| 4 | zvon 4 | zvon 3 |
+| ---- | -------------- | --------- |
+| 1    | zvon 1         | zvon 4    |
+| 2    | zvon 2         | zvon 1    |
+| 3    | zvon 3         | zvon 2    |
+| 4    | zvon 4         | zvon 3    |
 
 Melodija je zapisana kot **odmiki od zvona, ki začne**. Mercinova je `[0, 1, 2]`: v prvem krogu zvonovi 1 2 3, v drugem 2 3 4, v tretjem 3 4 1 … Štirka je `[0, 2, 1, 2]`: v prvem krogu zvonovi 1 3 2 3.
 
@@ -97,13 +99,16 @@ Ena ponovitev melodije z x-i je en takt: Mercinova (3 note) je v 3/4, Štirka (4
 
 ```js
 export const pieces = [
-  { name: 'Mercinova naokoli', strikes: turn(MERCINOVA) },
-  { name: 'Štirka naokoli', strikes: [...turn(STIRKA), ...turn(STIRKA), ...turn(STIRKA)] },
+  { name: "Mercinova naokoli", strikes: turn(MERCINOVA) },
   {
-    name: 'Mercinova naokoli; s poudarki (variacija)',
+    name: "Štirka naokoli",
+    strikes: [...turn(STIRKA), ...turn(STIRKA), ...turn(STIRKA)],
+  },
+  {
+    name: "Mercinova naokoli; s poudarki (variacija)",
     strikes: [...turn(MERCINOVA), ...turn(MERCINOVA, { accent: true })],
   },
-]
+];
 ```
 
 Zapis se izriše v vrsticah po 48 udarcev (`ROW`), kot v izvirniku. Mercinova je ena vrstica, Štirka štiri, variacija dve (poudarki v drugi).

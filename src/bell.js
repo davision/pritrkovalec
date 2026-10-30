@@ -3,7 +3,7 @@ const note = (semitones, sixteenths = 0) => 440 * 2 ** ((semitones + sixteenths 
 
 // Strike-note frequencies, bell 1 (smallest) first.
 export const tunings = {
-  'Naši zvonovi (h1-6 a1-4 fis1-7 d1-8)': [note(2, -6), note(0, -4), note(-3, -7), note(-7, -8)],
+  'Naši zvonovi (d1-8 fis1-7 a1-4 h1-6)': [note(-7, -8), note(-3, -7), note(0, -4), note(2, -6)],
   "Te Deum (a' g' f' d')": [440.0, 392.0, 349.23, 293.66],
   "Durov akord (c'' g' e' c')": [523.25, 392.0, 329.63, 261.63],
 }
@@ -18,6 +18,9 @@ const PARTIALS = [
   [2.5, 0.15, 0.9],
   [3, 0.12, 0.7],
 ]
+
+// vsi zvonovi zvenijo oktavo višje od zapisane uglasitve (sintetiziran zvok je sicer zvenel prenizko)
+const OCTAVE_UP = 2
 
 export class Bells {
   ctx = new AudioContext()
@@ -50,7 +53,7 @@ export class Bells {
     for (const [ratio, amp, decay] of PARTIALS) {
       const osc = this.ctx.createOscillator()
       const gain = this.ctx.createGain()
-      osc.frequency.value = freq * ratio
+      osc.frequency.value = freq * ratio * OCTAVE_UP
       gain.gain.setValueAtTime(0, t)
       gain.gain.linearRampToValueAtTime(amp * peak, t + 0.003)
       gain.gain.exponentialRampToValueAtTime(0.0001, t + decay)
