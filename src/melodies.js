@@ -30,7 +30,7 @@ const mirror = (bell) => 3 - bell // bell b ↔ 5 - b (1↔4, 2↔3)
 const MERCINOVA = [0, 1, 2]
 const STIRKA = [0, 2, 1, 2]
 // prettier-ignore
-const PO_PET = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3]
+const PO_PET = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 1, 3, 1, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3]
 // 4 bars hosted by bell 4, 4 bars by bell 3; then the whole figure mirrored so bell 1 hosts first (4 2 2 2 …)
 const PO_PET_HOSTS = PO_PET.map((_, i) => (i < 16 ? 3 : 2))
 const RENSKA = [0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1]
