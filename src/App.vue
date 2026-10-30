@@ -408,6 +408,7 @@ onBeforeUnmount(() => {
       <li><kbd>P</kbd> počakaj name</li>
       <li><kbd>M</kbd> metronom</li>
     </ul>
+    <footer class="footer">Copyright © 2026 David Ličen</footer>
   </main>
 </template>
 
@@ -852,6 +853,14 @@ h2 {
   color: var(--ink);
 }
 .hint {
+  color: var(--muted);
+}
+.footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 13px;
   color: var(--muted);
 }
 .shortcuts {
