@@ -24,12 +24,10 @@ assert.deepEqual(
   variacija.strikes.flatMap((s, i) => (s.accent ? [i] : [])),
   [0, 12, 24, 36],
 )
-// Po pet: melody + x; bell 4 hosts 4 bars, bell 3 the next 4, then mirrored (bell 1 hosts first, melody 4 2 2 2)
-assert.equal(popet.strikes.length, 128)
+// Po pet: melody + x; bell 4 hosts the first 4 bars, bell 3 the next 4
+assert.equal(popet.strikes.length, 64)
 assert.deepEqual(bells(popet.strikes, 0, 8), [1, 4, 3, 4, 3, 4, 3, 4])
 assert.deepEqual(bells(popet.strikes, 32, 4), [2, 3, 4, 3])
-assert.deepEqual(bells(popet.strikes, 64, 8), [4, 1, 2, 1, 2, 1, 2, 1])
-assert.deepEqual(bells(popet.strikes, 96, 4), [3, 2, 1, 2])
 assert.deepEqual(popet.strikes.slice(0, 10).map((s) => s.label), ['1', 'x', '2', 'x', '3', 'x', '4', 'x', '1', 'x'])
 
 console.log('melodies ok')

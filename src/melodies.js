@@ -44,7 +44,6 @@ export const pieces = [
   },
   {
     name: 'Po pet (navadna)',
-    // mirrored half: melody and hosting bells both mirrored (host 4 → 1, 3 → 2)
     strikes: [...hosted(PO_PET, PO_PET_HOSTS)],
   },
 ]
