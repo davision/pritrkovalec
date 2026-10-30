@@ -25,7 +25,7 @@ const viewOptions = [
 const bellOptions = [-1, 0, 1, 2, 3].map((b) => ({ label: b < 0 ? 'brez' : String(b + 1), value: b }))
 const tuning = ref(Object.keys(tunings)[0])
 const practice = ref(-1) // muted bell the user plays with space, -1 = none
-const hostVolume = ref(100) // % volume of the x strikes, 0 = only the lead melody plays
+const hostVolume = ref(55) // % volume of the x strikes, 0 = only the lead melody plays
 const playing = ref(false)
 const current = ref(-1)
 const waitForMe = ref(false) // pause before each practice-bell note until space is pressed
@@ -40,21 +40,26 @@ const cols = computed(() => Math.min(ROW, piece.value.strikes.length))
 const freqs = computed(() => tunings[tuning.value])
 // a beat = one melody note + its x, a bar = one pass of the melody (Mercinova 3/4, Štirka 4/4)
 const beatsPerBar = computed(() => Math.max(...piece.value.strikes.map((s) => +s.label || 0)))
-const barLen = computed(() => 2 * beatsPerBar.value) // strikes per bar; rows always start on a bar
+// strikes per bar = distance to the next melody note 1 (Mercinova 6 with the x strikes, Po pet 4); rows always start on a bar
+const barLen = computed(() => piece.value.strikes.findIndex((s, i) => i > 0 && s.label === '1'))
 const rows = computed(() => {
   const out = []
   piece.value.strikes.forEach((s, i) => (out[Math.floor(i / cols.value)] ??= []).push({ ...s, i, col: i % cols.value }))
   return out
 })
 const currentRow = computed(() => (current.value < 0 ? -1 : Math.floor(current.value / cols.value)))
-// Po Malavašiču: one line per phase, each melody note with its hosting bell as a superscript
+// Po Malavašiču and the staff views: each melody note with its hosting x strike (if any).
+// New line when the hosting bell changes (a new phase) or after two bars.
 const malaLines = computed(() => {
   const lines = []
   const s = piece.value.strikes
-  for (let i = 0; i < s.length; i += 2) {
-    const pair = { lead: { ...s[i], i }, host: { ...s[i + 1], i: i + 1 } }
+  for (let i = 0; i < s.length; ) {
+    const host = s[i + 1]?.label === 'x' ? { ...s[i + 1], i: i + 1 } : null
+    const pair = { lead: { ...s[i], i }, host }
+    i += host ? 2 : 1
     const last = lines.at(-1)
-    last?.[0].host.bell === pair.host.bell ? last.push(pair) : lines.push([pair])
+    const sameLine = last && last.length < 2 * beatsPerBar.value && last[0].host?.bell === host?.bell
+    sameLine ? last.push(pair) : lines.push([pair])
   }
   return lines
 })
@@ -75,7 +80,7 @@ const barX = (m) => ST.x0 + m * (beatsPerBar.value * ST.beat + ST.pad)
 const beatX = (k) => barX(Math.floor(k / beatsPerBar.value)) + ST.pad + (k % beatsPerBar.value) * ST.beat
 const staffWidth = (line) => barX(line.length / beatsPerBar.value) + 24 // room for the end repeat
 const noteClass = (n) => [`b${n.bell}`, { now: n.i === current.value, waiting: n.i === waiting.value, past: n.i < current.value, mine: n.bell === practice.value }]
-const currentLine = computed(() => malaLines.value.findIndex((l) => l.some((p) => p.lead.i === current.value || p.host.i === current.value)))
+const currentLine = computed(() => malaLines.value.findIndex((l) => l.some((p) => p.lead.i === current.value || p.host?.i === current.value)))
 const currentBell = computed(() => piece.value.strikes[current.value]?.bell ?? -1)
 
 // Web Audio lookahead scheduler: audio is timed by the AudioContext, visuals follow via rAF.
@@ -284,7 +289,7 @@ onBeforeUnmount(() => {
         <p v-for="(line, l) in malaLines" :id="`mala-${l}`" :key="l">
           <span v-for="p in line" :key="p.lead.i" class="pair">
             <span
-              v-for="n in [p.lead, p.host]"
+              v-for="n in [p.lead, p.host].filter(Boolean)"
               :key="n.i"
               :class="[n === p.lead ? 'lead' : 'host', `b${n.bell}`, { now: n.i === current, waiting: n.i === waiting, past: n.i < current, mine: n.bell === practice }]"
             ><i v-if="n.accent" class="accent">&gt;</i>{{ n.bell + 1 }}</span>
@@ -324,10 +329,10 @@ onBeforeUnmount(() => {
                 </template>
               </g>
               <!-- hosting bell: eighth rest on the beat, eighth note on the off-beat, stem up on the right -->
-              <g v-if="simple" class="host" :class="noteClass(p.host)">
+              <g v-if="simple && p.host" class="host" :class="noteClass(p.host)">
                 <text class="smufl" :x="beatX(k) + ST.beat / 2 - HEAD_W / 2" :y="lineY(p.host.bell)">{{ G.headX }}</text>
               </g>
-              <g v-else class="host" :class="noteClass(p.host)">
+              <g v-else-if="p.host" class="host" :class="noteClass(p.host)">
                 <!-- eighth rest on the hosting bell's own line, aligned with the quarter note's beat; scaled down to read lighter -->
                 <text class="smufl" :transform="`translate(${beatX(k) - 3.3} ${lineY(p.host.bell)}) scale(0.55 0.7)`">{{ G.rest8 }}</text>
                 <rect v-if="p.host.bell === practice" class="mine-bg" :x="beatX(k) + ST.beat / 2 - 9" y="152" width="18" height="20" rx="4" />
@@ -368,7 +373,8 @@ onBeforeUnmount(() => {
             {{ b }}
           </button>
         </div>
-        <div class="grid" :style="{ gridTemplateColumns: `repeat(${cols}, 1fr)` }">
+        <!-- a shorter last row keeps the column width and ends after its last bar -->
+        <div class="grid" :style="{ gridTemplateColumns: `repeat(${row.length}, 1fr)`, width: `${(row.length / cols) * 100}%` }">
           <div
             v-for="b in 4"
             :key="b"
@@ -561,13 +567,13 @@ h1 {
 h2 {
   font-size: 18px;
   text-align: center;
-  margin: 0 0 4px 0;
+  margin: 20px 0 10px 0;
 }
 .row {
   display: grid;
   grid-template-columns: 28px minmax(948px, 1fr);
   align-items: center;
-  padding: 10px 0;
+  padding: 30px 0;
   border-radius: 6px;
   transition: background 0.2s;
 }
@@ -592,6 +598,19 @@ h2 {
 .bell-nums button.hit {
   transform: scale(1.25);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 35%, transparent);
+}
+/* Bobnarske note: plain printed bell numbers like the book, coloured only while ringing */
+.drum .bell-nums button {
+  font: 13px/1 'Times New Roman', Georgia, serif;
+  background: none;
+  color: var(--ink);
+  border-radius: 3px;
+}
+.drum .bell-nums button.hit {
+  background: var(--c);
+  color: #fff;
+  transform: none;
+  box-shadow: none;
 }
 .grid {
   display: grid;

@@ -7,6 +7,7 @@ Melodije so povzete po zapisu **Letna** (avtor Jože Mehle):
 - Mercinova naokoli
 - Štirka naokoli
 - Mercinova naokoli; s poudarki (variacija)
+- Po pet (navadna)
 
 ## Funkcije
 
@@ -119,7 +120,17 @@ Zapis se izriše v vrsticah po 48 udarcev (`ROW`), kot v izvirniku. Mercinova je
 2. Dodaj jo v `pieces` z imenom in številom krogov: `{ name: 'Nova naokoli', strikes: [...turn(NOVA), ...turn(NOVA)] }`.
 3. V `melodies.test.js` dodaj preverjanje prvih udarcev proti zapisu in poženi `npm test`.
 
-Melodija, ki ne sledi pravilu kroženja, se lahko zapiše tudi neposredno kot seznam udarcev `{ bell, label, accent }`.
+### Melodije, ki ne krožijo
+
+Melodija, ki ne sledi pravilu kroženja, se zapiše kot zaporedje zvonov melodije (0 = zvon 1) in zvon, ki gosti, za vsako noto, s funkcijo `hosted(zvonovi, gostitelji, perBar = 4)`. Za vsako noto sledi x zvona, ki gosti; note se v vsakem taktu oštevilčijo od 1 do `perBar`. `mirror` zrcali zvonove (1↔4, 2↔3):
+
+```js
+const PO_PET = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3]
+const PO_PET_HOSTS = PO_PET.map((_, i) => (i < 16 ? 3 : 2)) // 4 takte gosti zvon 4, nato 4 takte zvon 3
+strikes: [...hosted(PO_PET, PO_PET_HOSTS), ...hosted(PO_PET.map(mirror), PO_PET_HOSTS.map(mirror))]
+```
+
+Pri pogledih Po Malavašiču in obeh notnih zapisih se vrstica začne ob menjavi zvona, ki gosti, ali po dveh taktih. Melodija se lahko zapiše tudi neposredno kot seznam udarcev `{ bell, label, accent }`.
 
 ## Uglasitev
 

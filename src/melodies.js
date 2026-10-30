@@ -16,14 +16,35 @@ function turn(melody, { reps = 2, accent = false } = {}) {
   return strikes
 }
 
+// A fixed sequence that doesn't rotate: melody bells in order (0 = bell 1), each followed by an x of
+// its hosting bell (hosts[i]); notes numbered 1..perBar within each bar.
+function hosted(bells, hosts, perBar = 4) {
+  return bells.flatMap((bell, i) => [
+    { bell, label: String((i % perBar) + 1), accent: false },
+    { bell: hosts[i], label: 'x', accent: false },
+  ])
+}
+
+const mirror = (bell) => 3 - bell // bell b ↔ 5 - b (1↔4, 2↔3)
+
 const MERCINOVA = [0, 1, 2]
 const STIRKA = [0, 2, 1, 2]
+// prettier-ignore
+const PO_PET = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3]
+// 4 bars hosted by bell 4, 4 bars by bell 3; then the whole figure mirrored so bell 1 hosts first (4 2 2 2 …)
+const PO_PET_HOSTS = PO_PET.map((_, i) => (i < 16 ? 3 : 2))
+const RENSKA = [0,1,1,1,0,1,1,1,0,1,0,1,0,1,1,1]
 
 export const pieces = [
   { name: 'Mercinova naokoli', strikes: turn(MERCINOVA) },
-  { name: 'Štirka naokoli', strikes: [...turn(STIRKA), ...turn(STIRKA), ...turn(STIRKA)] },
+  { name: 'Štirka naokoli', strikes: turn(STIRKA) },
   {
     name: 'Mercinova naokoli; s poudarki (variacija)',
-    strikes: [...turn(MERCINOVA), ...turn(MERCINOVA, { accent: true })],
+    strikes: turn(MERCINOVA, { accent: true }),
+  },
+  {
+    name: 'Po pet (navadna)',
+    // mirrored half: melody and hosting bells both mirrored (host 4 → 1, 3 → 2)
+    strikes: [...hosted(PO_PET, PO_PET_HOSTS)],
   },
 ]
