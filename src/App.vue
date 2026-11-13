@@ -9,6 +9,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import { hit, score, WINDOWS, MISS_MS } from './score.js'
+import { confetti } from './confetti.js'
 import '@fontsource/bravura' // SMuFL music font (SIL OFL) for the staff view
 
 const VERSION = __VERSION__ // injected at build time, see vite.config.js
@@ -211,7 +212,10 @@ function stop() {
 function finish() {
   const now = bells ? bells.ctx.currentTime * 1000 : 0
   const due = notes.filter((n) => n.off != null || n.ms + MISS_MS < now)
-  if (due.length) result.value = score(due, stray)
+  if (due.length) {
+    result.value = score(due, stray)
+    if (result.value.score === 100) confetti()
+  }
   stop()
 }
 
