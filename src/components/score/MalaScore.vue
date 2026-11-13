@@ -89,6 +89,12 @@ div.mala {
     'Times New Roman',
     serif; /* the one place that keeps the handwritten serif */
 }
+/* desktop: digits grow with the score column, from 44px at 1200px up to 64px on wide screens */
+@media (min-width: 1200px) {
+  .mala p {
+    font-size: clamp(44px, 7cqi, 64px);
+  }
+}
 .mala .group,
 .mala .pair {
   display: inline-flex;

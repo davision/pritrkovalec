@@ -23,7 +23,7 @@ const emit = defineEmits<{ ring: [bell: number] }>()
 <style>
 .bell-nums {
   display: grid;
-  grid-template-rows: repeat(4, 23px);
+  grid-template-rows: repeat(4, var(--cell, 23px)); /* lines up with the score's lanes */
   align-self: start;
 }
 .bell-nums button {

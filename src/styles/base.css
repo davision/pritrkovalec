@@ -10,7 +10,7 @@
   --b3: #9b59b6;
   --col-hl: rgba(27, 27, 27, 0.07);
   --lane: #fff0b0;
-  --player-h: 169px; /* height of the docked player, panels and the page end above it */
+  --player-h: 115px; /* height of the docked player, panels and the page end above it */
   --chrome: #141416; /* app bar, side panels, player */
   --chrome-raised: #232328; /* keys, hovered buttons */
   --chrome-deep: #0c0c0e; /* page behind everything */

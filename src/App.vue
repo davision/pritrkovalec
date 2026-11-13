@@ -8,12 +8,13 @@ import PlayerBar from './components/PlayerBar.vue'
 import ResultDialog from './components/ResultDialog.vue'
 import MalaScore from './components/score/MalaScore.vue'
 import StaffScore from './components/score/StaffScore.vue'
-import DrumTicker from './components/score/DrumTicker.vue'
+import TrackScore from './components/score/TrackScore.vue'
 import GridScore from './components/score/GridScore.vue'
 import { useSettings, PIECE_OPTIONS } from './composables/useSettings.ts'
 import { usePlayer } from './composables/usePlayer.ts'
 import { usePlayHistory } from './composables/usePlayHistory.ts'
 import { useShortcuts } from './composables/useShortcuts.ts'
+import { useMediaQuery } from './composables/useMediaQuery.ts'
 import { confetti } from './lib/confetti.ts'
 import type { Result } from './lib/score.ts'
 
@@ -24,6 +25,9 @@ const { pieceIdx, view, practice, tempoIdx, hostVolume, waitForMe, piece, rpm } 
 const { playing, current, waiting, flash, position, toggle, step, ring, tap, finish } =
   usePlayer(settings)
 const { stats, add: addPlay } = usePlayHistory()
+
+// same breakpoint as the side panels: desktop shows Bobnarske note / Grafični zapis whole, smaller screens as a moving track
+const desktop = useMediaQuery('(min-width: 1200px)')
 
 const showSettings = shallowRef(false) // panels only open/close below 1200px
 const showStats = shallowRef(false)
@@ -94,15 +98,22 @@ const scoreProps = computed(() => ({
           v-bind="scoreProps"
           :simple="view === 'simple'"
         />
-        <DrumTicker
-          v-else-if="view === 'drum'"
+        <GridScore
+          v-else-if="desktop"
+          :view="view"
+          v-bind="scoreProps"
+          :flash="flash"
+          @ring="ring"
+        />
+        <TrackScore
+          v-else
+          :view="view"
           v-bind="scoreProps"
           :flash="flash"
           :playing="playing"
           :position="position"
           @ring="ring"
         />
-        <GridScore v-else v-bind="scoreProps" :flash="flash" @ring="ring" />
       </section>
 
       <ResultDialog v-model:result="result" />
@@ -150,6 +161,10 @@ main {
   background: rgba(0, 0, 0, 0.55);
 }
 @media (min-width: 1200px) {
+  /* lets notation views size themselves to the score column (cqi units), e.g. Malavašič's digits */
+  .score {
+    container-type: inline-size;
+  }
   .layout {
     display: grid;
     grid-template-columns: 300px minmax(0, 1fr) 340px;
