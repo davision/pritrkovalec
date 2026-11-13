@@ -7,8 +7,11 @@ import SelectButton from 'primevue/selectbutton'
 import Slider from 'primevue/slider'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import { hit, score, WINDOWS, MISS_MS } from './score.js'
 import '@fontsource/bravura' // SMuFL music font (SIL OFL) for the staff view
 
+const VERSION = __VERSION__ // injected at build time, see vite.config.js
 const pieceIdx = ref(0)
 const TEMPOS = [150, 180, 200, 250] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
 const tempoIdx = ref(TEMPOS.indexOf(180))
@@ -109,6 +112,10 @@ function placeStrip() {
 // Web Audio lookahead scheduler: audio is timed by the AudioContext, visuals follow via rAF.
 let bells, timer, raf, next, nextTime, queue
 let waitAt = -1 // scheduler stopped before this strike, waiting for the player
+let notes = [] // practice-bell beats of this play-along, for the accuracy score
+let stray = 0 // taps that matched no beat
+const result = ref(null) // score shown in the dialog after Ustavi
+const verdict = (s) => (s >= 95 ? 'Odlično!' : s >= 85 ? 'Zelo dobro' : s >= 70 ? 'Dobro' : s >= 50 ? 'Še malo vaje' : 'Vadi naprej')
 const LOOKAHEAD = 0.1
 const GRACE = 0.3 // wait mode: seconds after a note is due before the melody counts as stopped
 
@@ -130,6 +137,7 @@ function schedule() {
     }
     const volume = s.label === 'x' ? hostVolume.value / 100 : 1
     if (!clickOnly.value && s.bell !== practice.value && volume > 0) bells.ring(freqs.value[s.bell], nextTime, s.accent, volume)
+    if (s.bell === practice.value) notes.push({ ms: nextTime * 1000, off: null }) // a beat the player should hit
     if ((metronome.value || clickOnly.value) && s.label !== 'x') bells.click(nextTime, s.label === '1')
     queue.push({ i: next, t: nextTime })
     nextTime += 60 / rpm.value
@@ -166,12 +174,23 @@ function pause() {
   cancelAnimationFrame(raf)
   playing.value = false
   waitAt = waiting.value = -1
+  if (bells) notes = notes.filter((n) => n.ms <= bells.ctx.currentTime * 1000) // drop beats queued ahead that never came
 }
 
 function stop() {
   pause()
   clickOnly.value = false
   current.value = -1
+  notes = []
+  stray = 0
+}
+
+// Ustavi / Esc: stop and show the accuracy of this play-along. Beats still inside their window are left out.
+function finish() {
+  const now = bells ? bells.ctx.currentTime * 1000 : 0
+  const due = notes.filter((n) => n.off != null || n.ms + MISS_MS < now)
+  if (due.length) result.value = score(due, stray)
+  stop()
 }
 
 // Predvajaj: from the start, or after a pause / step continue one beat after the shown note
@@ -203,7 +222,7 @@ function ring(bell) {
 }
 
 function onKey(e) {
-  if (e.code === 'Escape' && e.type === 'keydown') return stop()
+  if (e.code === 'Escape' && e.type === 'keydown') return finish()
   // 1–4 picks the bell to play along, 0 = all bells play
   if (/^Digit[0-4]$/.test(e.code) && e.type === 'keydown' && !e.metaKey && !e.ctrlKey) {
     e.preventDefault()
@@ -231,6 +250,9 @@ function onKey(e) {
 function tap() {
   if (practice.value < 0) return
   ring(practice.value)
+  // judged against what the player hears, so the device's audio output delay is taken off the tap time.
+  // Počakaj name isn't scored: there the melody waits for the player, so there is no fixed beat.
+  if (playing.value && !waitForMe.value) hit(notes, (bells.ctx.currentTime - (bells.ctx.outputLatency || 0)) * 1000) || stray++
   // the first press on the opening bell counts as strike 1, the melody continues in tempo from it
   if (!playing.value && current.value < 0 && practice.value === piece.value.strikes[0].bell) play(1)
   else if (waitAt >= 0) {
@@ -245,7 +267,7 @@ function tap() {
 // turning waiting off or switching bells mid-pause would leave the melody stuck: just carry on
 watch([waitForMe, practice], () => waitAt >= 0 && continueFrom(waitAt, bells.ctx.currentTime + LOOKAHEAD))
 
-watch(pieceIdx, stop)
+watch(pieceIdx, () => stop())
 // while stopped (step, stop, view or piece change) the strip still has to follow; while playing draw() does it
 watch([current, view, pieceIdx, playing], () => !playing.value && placeStrip(), { flush: 'post', immediate: true })
 watch(currentRow, (r) => r >= 0 && document.getElementById(`row-${r}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
@@ -264,7 +286,7 @@ onBeforeUnmount(() => {
 <template>
   <main>
     <header>
-      <h1>Pritrkovalec v1.0</h1>
+      <h1>Pritrkovalec v{{ VERSION }}</h1>
     </header>
 
     <section class="controls">
@@ -312,7 +334,7 @@ onBeforeUnmount(() => {
           {{ playing ? 'Pavza' : 'Predvajaj' }}
         </Button>
         <Button label="Naprej ❯" severity="secondary" outlined @click="step(1)" />
-        <Button label="■ Ustavi" severity="secondary" outlined :disabled="!playing && current < 0" @click="stop()" />
+        <Button label="■ Ustavi" severity="secondary" outlined :disabled="!playing && current < 0" @click="finish()" />
         <!-- <Button label="♩ Samo metronom" severity="secondary" outlined :disabled="playing" @click="(clickOnly = true), play()" /> -->
       </div>
     </section>
@@ -493,6 +515,22 @@ onBeforeUnmount(() => {
       <li><kbd>P</kbd> počakaj name</li>
     </ul>
 
+    <Dialog :visible="!!result" modal dismissable-mask header="Natančnost igranja" class="result-dialog" @update:visible="result = null">
+      <template v-if="result">
+        <p class="result-score">{{ result.score }}<small>/100</small></p>
+        <p class="result-verdict">{{ verdict(result.score) }}</p>
+        <ul class="result-counts">
+          <li v-for="(w, k) in WINDOWS" :key="w.label"><span>{{ w.label }} <small>±{{ w.ms }} ms</small></span><strong>{{ result.counts[k] }}</strong></li>
+          <li><span>Zgrešeno</span><strong>{{ result.miss }}</strong></li>
+          <li v-if="result.stray"><span>Odvečni udarci</span><strong>{{ result.stray }}</strong></li>
+        </ul>
+        <p v-if="result.counts.some(Boolean)" class="result-mean">
+          {{ Math.abs(result.mean) < 10 ? 'Lepo na udarcu' : `V povprečju ${Math.abs(result.mean)} ms ${result.mean < 0 ? 'prezgodaj' : 'prepozno'}` }}
+        </p>
+        <Button label="Zapri" class="result-close" @click="result = null" />
+      </template>
+    </Dialog>
+
     <!-- touch screens: player docked at the bottom, the circle strikes the chosen bell like space -->
     <nav class="player" aria-label="Predvajalnik">
       <SelectButton v-model="practice" :options="bellOptions" option-label="label" option-value="value" :allow-empty="false" class="player-bells">
@@ -515,7 +553,7 @@ onBeforeUnmount(() => {
           <template v-if="practice >= 0"><strong>{{ practice + 1 }}</strong><small>udari</small></template>
           <small v-else>izberi<br />zvon</small>
         </button>
-        <button class="pbtn" aria-label="Ustavi" :disabled="!playing && current < 0" @click="stop()">■</button>
+        <button class="pbtn" aria-label="Ustavi" :disabled="!playing && current < 0" @click="finish()">■</button>
         <button class="pbtn" aria-label="Nota naprej" @click="step(1)">❯</button>
       </div>
     </nav>
@@ -1040,6 +1078,45 @@ kbd {
   border-radius: 3px;
   padding: 0 4px;
   background: #fff;
+}
+/* accuracy dialog after Ustavi */
+.result-dialog {
+  width: min(92vw, 380px);
+}
+.result-score {
+  margin: 0;
+  text-align: center;
+  font: 700 64px/1 Georgia, serif;
+}
+.result-score small {
+  font-size: 20px;
+  color: var(--muted);
+}
+.result-verdict {
+  margin: 4px 0 16px;
+  text-align: center;
+  font-size: 18px;
+}
+.result-counts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.result-counts li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.result-counts small,
+.result-mean {
+  color: var(--muted);
+}
+.result-mean {
+  text-align: center;
+}
+.result-close {
+  width: 100%;
 }
 /* bottom player: only on touch screens and narrow windows */
 .player {
