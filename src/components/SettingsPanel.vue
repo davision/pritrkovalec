@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { shallowRef } from 'vue'
 import Select from 'primevue/select'
 import Slider from 'primevue/slider'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tag from 'primevue/tag'
+import Button from 'primevue/button'
 import SidePanel from './SidePanel.vue'
 import { TEMPOS, VIEW_OPTIONS, type View } from '../composables/useSettings.ts'
+import { useInstallApp } from '../composables/useInstallApp.ts'
 
 // Left panel: how the score looks and plays, then keyboard shortcuts and the copyright at the bottom.
 const { open = false } = defineProps<{ open?: boolean }>()
@@ -13,6 +16,10 @@ const view = defineModel<View>('view', { required: true })
 const tempoIdx = defineModel<number>('tempoIdx', { required: true })
 const hostVolume = defineModel<number>('hostVolume', { required: true })
 const waitForMe = defineModel<boolean>('waitForMe', { required: true })
+
+// add the app to the phone's home screen; iOS only gets the steps, it has no install prompt
+const { mode: installMode, install } = useInstallApp()
+const showIosSteps = shallowRef(false)
 </script>
 
 <template>
@@ -51,6 +58,19 @@ const waitForMe = defineModel<boolean>('waitForMe', { required: true })
       </div>
       <label class="toggle"><ToggleSwitch v-model="waitForMe" /> Počakaj name (P)</label>
       <!-- <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label> -->
+    </div>
+    <div v-if="installMode" class="install">
+      <Button
+        label="Namesti kot aplikacijo"
+        icon="pi pi-mobile"
+        severity="secondary"
+        class="install-btn"
+        @click="installMode === 'prompt' ? install() : (showIosSteps = !showIosSteps)"
+      />
+      <p v-if="installMode === 'ios' && showIosSteps" class="install-steps">
+        V Safariju tapni <i class="pi pi-upload" aria-label="Deli" /> <strong>Deli</strong>, nato
+        <strong>Dodaj na začetni zaslon</strong>.
+      </p>
     </div>
     <div class="panel-foot">
       <ul class="shortcuts">
@@ -96,6 +116,22 @@ const waitForMe = defineModel<boolean>('waitForMe', { required: true })
 .ticks button.on {
   color: var(--ink);
   font-weight: 700;
+}
+/* add to home screen */
+.install {
+  margin-top: 28px;
+}
+.install-btn {
+  width: 100%;
+}
+.install-steps {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.install-steps strong {
+  color: var(--ink);
 }
 .toggle {
   display: inline-flex;

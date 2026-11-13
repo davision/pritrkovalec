@@ -3,13 +3,20 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Pritrkovalec</title>
+  <!-- installable as an app on the phone's home screen (see public/manifest.webmanifest) -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="theme-color" content="#141416" />
+  <meta name="apple-mobile-web-app-title" content="Pritrkovalec" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
 
 <body>
   <div id="app"></div>
-  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="/src/main.ts"></script>
 </body>
 
 </html>
