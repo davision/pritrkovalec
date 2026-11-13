@@ -44,8 +44,9 @@ function follow() {
   showProgress()
   raf = requestAnimationFrame(follow)
 }
+// canStop too: stopping from a pause doesn't change `playing`, but the bar must empty
 watch(
-  () => [playing, timed],
+  () => [playing, timed, canStop],
   () => {
     cancelAnimationFrame(raf)
     if (playing && timed) follow()

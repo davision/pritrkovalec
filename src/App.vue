@@ -171,10 +171,15 @@ main {
     100dvh - 61px - env(safe-area-inset-top)
   ); /* exactly the screen below the app bar */
   background: #fff;
+  border-radius: 10px 10px 0 0; /* a sheet of paper laid on the dark frame */
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   padding: 8px 8px calc(var(--player-h) + 16px); /* room for the docked player */
+}
+/* what shows around the sheet's rounded corners: the same dark as the app bar and panels */
+.layout {
+  background: var(--chrome);
 }
 .backdrop {
   position: fixed;
