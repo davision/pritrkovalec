@@ -32,6 +32,7 @@ const {
   waiting,
   flash,
   position,
+  progress,
   toggle,
   step,
   ring,
@@ -142,6 +143,8 @@ const scoreProps = computed(() => ({
         :can-stop="playing || current >= 0"
         :waiting="waiting >= 0"
         :flash="flash"
+        :timed="minutes > 0"
+        :progress="progress"
         @prev="step(-1)"
         @toggle="toggle"
         @tap="tap"

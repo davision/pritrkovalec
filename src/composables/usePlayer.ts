@@ -235,6 +235,15 @@ export function usePlayer(
     }
   }
 
+  // Share of the chosen playing time used so far, 0–1 (0 when playing until stopped). Melody time only,
+  // not the count-in or pauses; full while the melody finishes its last pass. Read every frame; not reactive.
+  function progress() {
+    if (!minutes.value) return 0
+    const now = bells?.ctx.currentTime ?? 0
+    const t = played + (since !== null ? Math.max(0, now - since) : 0)
+    return Math.min(1, t / (minutes.value * 60))
+  }
+
   // Shown position in strikes, fractional while playing (between the current strike and the next),
   // for views that move smoothly. Read it every frame; it is not reactive.
   function position() {
@@ -261,6 +270,7 @@ export function usePlayer(
     waiting: readonly(waiting),
     flash: readonly(flash),
     position,
+    progress,
     toggle,
     step,
     ring,

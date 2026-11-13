@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useTemplateRef } from 'vue'
+import { useTemplateRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import SelectButton from 'primevue/selectbutton'
 import Popover from 'primevue/popover'
 import BellIcon from './BellIcon.vue'
@@ -7,17 +7,22 @@ import { BELL_OPTIONS } from '../composables/useSettings.ts'
 
 // Player docked at the bottom: transport buttons and the big circle that strikes the chosen bell like
 // space does. The bell is chosen in a popover above the circle: from the circle itself while none is
-// chosen, then from the small bell badge on its top-right corner.
+// chosen, then from the small bell badge on its top-right corner. With a playing time chosen, a bar
+// along the top edge fills up as that time runs.
 const {
   playing = false,
   canStop = false,
   waiting = false,
   flash = -1,
+  timed = false,
+  progress,
 } = defineProps<{
   playing?: boolean
   canStop?: boolean
   waiting?: boolean // the melody waits for the player's note
   flash?: number // bell just rung, briefly highlighted
+  timed?: boolean // a playing time is chosen: show the time bar
+  progress: () => number // share of the playing time used, 0–1, read every frame
 }>()
 const practice = defineModel<number>('practice', { required: true })
 const emit = defineEmits<{ prev: []; toggle: []; tap: []; stop: []; next: [] }>()
@@ -26,6 +31,30 @@ const picker = useTemplateRef<InstanceType<typeof Popover>>('picker')
 const circle = useTemplateRef<HTMLButtonElement>('circle')
 // always point the popover at the big circle, also when opened from the badge
 const openPicker = (e: Event) => picker.value?.toggle(e, circle.value)
+
+// time bar: set imperatively every frame while playing, like the moving drum track
+const timeBar = useTemplateRef<HTMLDivElement>('timeBar')
+function showProgress() {
+  const p = progress()
+  timeBar.value?.style.setProperty('--progress', String(p))
+  timeBar.value?.setAttribute('aria-valuenow', String(Math.round(p * 100)))
+}
+let raf = 0
+function follow() {
+  showProgress()
+  raf = requestAnimationFrame(follow)
+}
+watch(
+  () => [playing, timed],
+  () => {
+    cancelAnimationFrame(raf)
+    if (playing && timed) follow()
+    else showProgress() // paused keeps its place, stopped empties
+  },
+  { flush: 'post' },
+)
+onMounted(showProgress)
+onBeforeUnmount(() => cancelAnimationFrame(raf))
 
 // the circle strikes on pointerdown (no click delay); with no bell chosen it opens the picker instead
 function onCircleDown() {
@@ -41,6 +70,15 @@ function choose() {
 
 <template>
   <nav class="player dark" aria-label="Predvajalnik">
+    <div
+      v-if="timed"
+      ref="timeBar"
+      class="time-bar"
+      role="progressbar"
+      aria-label="Porabljen čas igranja"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    />
     <div class="player-row">
       <button class="pbtn" aria-label="Nota nazaj" @click="emit('prev')">
         <i class="pi pi-step-backward" />
@@ -116,6 +154,21 @@ function choose() {
 </template>
 
 <style>
+/* playing time used: an accent fill on a track along the player's top edge */
+.time-bar {
+  position: absolute;
+  inset: -1px 0 auto; /* over the player's top border */
+  height: 4px;
+  background: var(--line);
+}
+.time-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left;
+}
 .player {
   position: fixed;
   inset: auto 0 0;
