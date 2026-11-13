@@ -48,18 +48,37 @@ export class Bells {
     osc.stop(t + 0.04)
   }
 
-  ring(freq, t = this.ctx.currentTime, accent = false, volume = 1) {
-    const peak = (accent ? 1.8 : 1) * volume
+  // Each bell's sound is computed once into a buffer; a strike is then just 2 audio nodes instead of 14
+  // live oscillators, which phones can't keep up with at 3 strikes a second.
+  #buffers = new Map()
+  buffer(freq) {
+    let buf = this.#buffers.get(freq)
+    if (buf) return buf
+    const sr = this.ctx.sampleRate
+    const len = Math.ceil(Math.max(...PARTIALS.map((p) => p[2])) * sr)
+    buf = this.ctx.createBuffer(1, len, sr)
+    const data = buf.getChannelData(0)
+    const attack = 0.003 * sr
     for (const [ratio, amp, decay] of PARTIALS) {
-      const osc = this.ctx.createOscillator()
-      const gain = this.ctx.createGain()
-      osc.frequency.value = freq * ratio * OCTAVE_UP
-      gain.gain.setValueAtTime(0, t)
-      gain.gain.linearRampToValueAtTime(amp * peak, t + 0.003)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + decay)
-      osc.connect(gain).connect(this.out)
-      osc.start(t)
-      osc.stop(t + decay)
+      const w = (2 * Math.PI * freq * ratio * OCTAVE_UP) / sr
+      const end = Math.floor(decay * sr)
+      const fall = (0.0001 / amp) ** (1 / (end - attack)) // per-sample factor of the exponential decay
+      let env = amp
+      for (let n = 0; n < end; n++) {
+        const g = n < attack ? (amp * n) / attack : (env *= fall)
+        data[n] += g * Math.sin(w * n)
+      }
     }
+    this.#buffers.set(freq, buf)
+    return buf
+  }
+
+  ring(freq, t = this.ctx.currentTime, accent = false, volume = 1) {
+    const src = this.ctx.createBufferSource()
+    const gain = this.ctx.createGain()
+    src.buffer = this.buffer(freq)
+    gain.gain.value = (accent ? 1.8 : 1) * volume
+    src.connect(gain).connect(this.out)
+    src.start(t)
   }
 }

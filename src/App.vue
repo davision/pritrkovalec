@@ -95,6 +95,7 @@ const tape = computed(() => {
   const s = piece.value.strikes
   return Array.from({ length: COPIES }, (_, c) => s.map((x, i) => ({ ...x, i, j: c * s.length + i }))).flat()
 })
+const tapeBars = computed(() => tape.value.filter((s) => s.j && s.j % barLen.value === 0).map((s) => s.j))
 let currentT = 0 // audio time the current strike sounded, for smooth motion between strikes
 
 // set imperatively every frame: binding it through Vue would re-render the whole score 60× a second
@@ -114,6 +115,7 @@ const GRACE = 0.3 // wait mode: seconds after a note is due before the melody co
 function audio() {
   bells ??= new Bells()
   bells.resume()
+  freqs.value.forEach((f) => bells.buffer(f)) // render all 4 bells up front, not on the first tap
   return bells
 }
 
@@ -320,7 +322,12 @@ onBeforeUnmount(() => {
       <div v-if="view === 'mala'" class="mala">
         <p v-for="(line, l) in malaLines" :id="`mala-${l}`" :key="l">
           <span v-for="(g, k) in groups(line)" :key="k" class="group">
-            <span v-for="p in g" :key="p.lead.i" class="pair">
+            <span
+              v-for="p in g"
+              :key="p.lead.i"
+              v-memo="[pieceIdx, practice, current === p.lead.i || current === p.host?.i, current > p.lead.i, waiting === p.lead.i || waiting === p.host?.i]"
+              class="pair"
+            >
               <span
                 v-for="n in [p.lead, p.host].filter(Boolean)"
                 :key="n.i"
@@ -416,16 +423,18 @@ onBeforeUnmount(() => {
               :style="{ gridRow: b }"
             />
             <div v-if="practice >= 0" class="lane" :style="{ gridRow: practice + 1 }" />
-            <template v-for="s in tape" :key="s.j">
-              <span
-                class="note"
-                :class="[`b${s.bell}`, { x: s.label === 'x', now: s.i === current, waiting: s.i === waiting, past: s.j < piece.strikes.length + current, mine: s.bell === practice }]"
-                :style="{ gridColumn: s.j + 1, gridRow: s.bell + 1 }"
-              >
-                <i v-if="s.accent" class="accent">&gt;</i>{{ s.label }}
-              </span>
-              <span v-if="s.j && s.j % barLen === 0" class="bar-line" :style="{ gridColumn: s.j + 1 }" />
-            </template>
+            <!-- v-memo: a strike re-renders only the notes whose state changed, not all ~400 -->
+            <span
+              v-for="s in tape"
+              :key="s.j"
+              v-memo="[pieceIdx, practice, s.i === current, s.i === waiting, s.j < piece.strikes.length + current]"
+              class="note"
+              :class="[`b${s.bell}`, { x: s.label === 'x', now: s.i === current, waiting: s.i === waiting, past: s.j < piece.strikes.length + current, mine: s.bell === practice }]"
+              :style="{ gridColumn: s.j + 1, gridRow: s.bell + 1 }"
+            >
+              <i v-if="s.accent" class="accent">&gt;</i>{{ s.label }}
+            </span>
+            <span v-for="j in tapeBars" :key="`bar${j}`" class="bar-line" :style="{ gridColumn: j + 1 }" />
           </div>
           <div class="playhead" />
         </div>
