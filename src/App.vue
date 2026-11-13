@@ -38,6 +38,28 @@ const view = ref('mala') // score style, one of viewOptions; default Po Malavaš
 const clickOnly = ref(false) // metronome-only playback, bells silent
 const flash = ref(-1)
 
+// Settings survive a reload. Each saved value is checked before use, so an old or broken entry
+// (e.g. a piece that was since renamed) just keeps that setting's default. The piece is kept by name, not index.
+const SETTINGS = {
+  view: [view, (v) => viewOptions.some((o) => o.value === v)],
+  practice: [practice, (v) => bellOptions.some((o) => o.value === v)],
+  tempoIdx: [tempoIdx, (v) => Number.isInteger(v) && v >= 0 && v < TEMPOS.length],
+  hostVolume: [hostVolume, (v) => Number.isFinite(v) && v >= 0 && v <= 100],
+  waitForMe: [waitForMe, (v) => typeof v === 'boolean'],
+}
+try {
+  const saved = JSON.parse(localStorage.getItem('pritrkovalec-settings')) ?? {}
+  for (const [k, [r, ok]] of Object.entries(SETTINGS)) if (ok(saved[k])) r.value = saved[k]
+  const i = pieces.findIndex((p) => p.name === saved.piece)
+  if (i >= 0) pieceIdx.value = i
+} catch {} // storage blocked (private mode) or unreadable: start with defaults
+watch([pieceIdx, ...Object.values(SETTINGS).map(([r]) => r)], () => {
+  const out = Object.fromEntries(Object.entries(SETTINGS).map(([k, [r]]) => [k, r.value]))
+  try {
+    localStorage.setItem('pritrkovalec-settings', JSON.stringify({ ...out, piece: pieces[pieceIdx.value].name }))
+  } catch {}
+})
+
 const piece = computed(() => pieces[pieceIdx.value])
 const cols = computed(() => Math.min(ROW, piece.value.strikes.length))
 const freqs = computed(() => tunings[tuning.value])
