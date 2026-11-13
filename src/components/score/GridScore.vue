@@ -5,12 +5,10 @@ import type { Piece, Strike } from '../../lib/melodies.ts'
 import BellButtons from './BellButtons.vue'
 import './grid.css'
 
-// Bobnarske note / Grafični zapis on desktop: the whole score in rows of 4 bars (2 when 4 would be too
+// Bobnarske note on desktop: the whole score in rows of 4 bars (2 when 4 would be too
 // cramped), so every row lines up; the notes grow with the width. The row being played gets a column highlight.
-// drum: numbered squares and x; seq: a dot per strike on its bell's line and an empty circle on the other three.
 const props = withDefaults(
   defineProps<{
-    view: 'drum' | 'seq'
     piece: Piece
     current: number
     waiting: number
@@ -112,21 +110,13 @@ watch(
             ]"
             :style="{ gridColumn: s.col + 1, gridRow: s.bell + 1 }"
           >
-            <i v-if="s.accent" class="accent">&gt;</i>{{ view === 'drum' ? s.label : '' }}
+            <i v-if="s.accent" class="accent">&gt;</i>{{ s.label }}
           </span>
           <span
             v-if="s.col && s.col % bar === 0"
             class="bar-line"
             :style="{ gridColumn: s.col + 1 }"
           />
-          <template v-for="b in view === 'seq' ? 4 : 0" :key="b">
-            <span
-              v-if="b - 1 !== s.bell"
-              class="note pause"
-              :class="`b${b - 1}`"
-              :style="{ gridColumn: s.col + 1, gridRow: b }"
-            />
-          </template>
         </template>
       </div>
     </div>

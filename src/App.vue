@@ -26,7 +26,7 @@ const { playing, current, waiting, flash, position, toggle, step, ring, tap, fin
   usePlayer(settings)
 const { stats, add: addPlay } = usePlayHistory()
 
-// same breakpoint as the side panels: desktop shows Bobnarske note / Grafični zapis whole, smaller screens as a moving track
+// same breakpoint as the side panels: desktop shows Bobnarske note whole, smaller screens as a moving track
 const desktop = useMediaQuery('(min-width: 1200px)')
 
 const showSettings = shallowRef(false) // panels only open/close below 1200px
@@ -90,7 +90,7 @@ const scoreProps = computed(() => ({
         </div>
       </section>
 
-      <!-- the view name is also a class here: the notation styles use it (.drum, .seq, .mala, .staff) -->
+      <!-- the view name is also a class here: the notation styles use it (.drum, .mala, .staff) -->
       <section class="score" :class="[view, { practising: practice >= 0 }]" :style="scoreStyle">
         <MalaScore v-if="view === 'mala'" v-bind="scoreProps" />
         <StaffScore
@@ -98,16 +98,9 @@ const scoreProps = computed(() => ({
           v-bind="scoreProps"
           :simple="view === 'simple'"
         />
-        <GridScore
-          v-else-if="desktop"
-          :view="view"
-          v-bind="scoreProps"
-          :flash="flash"
-          @ring="ring"
-        />
+        <GridScore v-else-if="desktop" v-bind="scoreProps" :flash="flash" @ring="ring" />
         <TrackScore
           v-else
-          :view="view"
           v-bind="scoreProps"
           :flash="flash"
           :playing="playing"

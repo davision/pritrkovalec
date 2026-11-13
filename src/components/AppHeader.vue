@@ -28,7 +28,7 @@ function onTitle() {
       class="icon-btn"
       icon="pi pi-cog"
       severity="secondary"
-      outlined
+      text
       aria-label="Nastavitve"
       title="Nastavitve"
       @click="emit('settings')"
@@ -41,7 +41,7 @@ function onTitle() {
       class="icon-btn"
       icon="pi pi-chart-bar"
       severity="secondary"
-      outlined
+      text
       aria-label="Statistika igranja"
       title="Statistika"
       @click="emit('stats')"
@@ -76,10 +76,15 @@ h1 {
   user-select: none; /* fast taps on the title shouldn't select it */
   -webkit-user-select: none;
 }
-.icon-btn {
+/* borderless icon buttons: a big, bright icon is the whole button */
+header .icon-btn.p-button {
   width: 44px;
   height: 44px;
   padding: 0;
+  color: var(--ink);
+}
+.icon-btn .p-button-icon {
+  font-size: 22px;
 }
 @media (min-width: 1200px) {
   /* panels are always open here: the buttons keep their space so the title stays centred */

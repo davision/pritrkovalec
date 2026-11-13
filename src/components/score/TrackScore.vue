@@ -5,12 +5,11 @@ import type { Piece } from '../../lib/melodies.ts'
 import BellButtons from './BellButtons.vue'
 import './grid.css'
 
-// Bobnarske note / Grafični zapis on phones and tablets: one endless track sliding under a fixed playhead.
+// Bobnarske note on phones and tablets: one endless track sliding under a fixed playhead.
 // The piece is drawn 3× so the playhead (on the middle copy) always has notes on both sides; wrapping
 // jumps one copy back, invisibly. Desktop shows the whole score in rows instead (GridScore).
 const props = withDefaults(
   defineProps<{
-    view: 'drum' | 'seq' // drum: numbered squares and x; seq: dots, with empty circles on the other bells
     piece: Piece
     current: number
     waiting: number
@@ -33,14 +32,6 @@ const tape = computed(() => {
     s.map((x, i) => ({ ...x, i, j: c * s.length + i })),
   ).flat()
 })
-// Grafični zapis: an empty circle on each bell that doesn't ring at that strike
-const tapePauses = computed(() =>
-  props.view === 'seq'
-    ? tape.value.flatMap((s) =>
-        [0, 1, 2, 3].filter((b) => b !== s.bell).map((b) => ({ j: s.j, b })),
-      )
-    : [],
-)
 const tapeBars = computed(() => {
   const len = barLen(props.piece.strikes)
   return tape.value.filter((s) => s.j && s.j % len === 0).map((s) => s.j)
@@ -120,17 +111,8 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
           ]"
           :style="{ gridColumn: s.j + 1, gridRow: s.bell + 1 }"
         >
-          <i v-if="s.accent" class="accent">&gt;</i>{{ view === 'drum' ? s.label : '' }}
+          <i v-if="s.accent" class="accent">&gt;</i>{{ s.label }}
         </span>
-        <!-- static: v-memo keeps the hundreds of empty circles out of every re-render -->
-        <span
-          v-for="p in tapePauses"
-          :key="`p${p.j}-${p.b}`"
-          v-memo="[piece]"
-          class="note pause"
-          :class="`b${p.b}`"
-          :style="{ gridColumn: p.j + 1, gridRow: p.b + 1 }"
-        />
         <span
           v-for="j in tapeBars"
           :key="`bar${j}`"

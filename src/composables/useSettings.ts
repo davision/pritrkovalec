@@ -3,10 +3,9 @@ import { pieces } from '../lib/melodies.ts'
 
 export const TEMPOS = [150, 180, 200, 250] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
 export const PIECE_OPTIONS = pieces.map((p, i) => ({ label: p.name, value: i }))
-export type View = 'drum' | 'seq' | 'mala' | 'staff' | 'simple'
+export type View = 'drum' | 'mala' | 'staff' | 'simple'
 export const VIEW_OPTIONS: { label: string; value: View }[] = [
   { label: 'Bobnarske note', value: 'drum' },
-  { label: 'Grafični zapis', value: 'seq' },
   { label: 'Po Malavašiču', value: 'mala' },
   { label: 'Notni in številčni zapis', value: 'staff' },
   { label: 'Poenostavljen notni zapis', value: 'simple' },

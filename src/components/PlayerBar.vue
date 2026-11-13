@@ -80,6 +80,8 @@ function choose() {
           class="bell-badge"
           aria-label="Zamenjaj zvon"
           aria-haspopup="dialog"
+          :disabled="playing"
+          :title="playing ? 'Zvon zamenjaš, ko melodijo ustaviš' : undefined"
           @click="openPicker"
         >
           <BellIcon :bell="practice" plain />
@@ -136,6 +138,9 @@ function choose() {
 .bell-picker.p-popover {
   left: 50% !important; /* PrimeVue aligns the popover's left edge to the circle's */
   translate: -50% 0; /* `translate`, not `transform`, which the open animation uses */
+  /* never wider than the screen: an overflowing popover widens the page on phones, which then scrolls
+     sideways and shifts the fixed player bar */
+  max-width: calc(100vw - 16px);
 }
 .bell-picker.p-popover::before,
 .bell-picker.p-popover::after {
@@ -148,10 +153,13 @@ function choose() {
   color: var(--muted);
 }
 .player-bells .p-togglebutton {
-  padding: 4px 12px;
+  padding: 2px;
   font-size: 13px;
   background: transparent; /* no grey bar behind the bells */
   border-color: transparent;
+}
+.player-bells .p-togglebutton-content {
+  padding: 6px 10px;
 }
 .player-bells .p-togglebutton.p-togglebutton-checked {
   background: transparent;
@@ -238,8 +246,13 @@ function choose() {
   cursor: pointer;
   transition: transform 0.08s;
 }
-.bell-badge:active {
+.bell-badge:active:not(:disabled) {
   transform: scale(0.92);
+}
+/* the bell can't be changed while the melody plays */
+.bell-badge:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 .bell-badge .bell-icon {
   width: 22px;
