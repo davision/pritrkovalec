@@ -34,8 +34,15 @@ function onTitle() {
       @click="emit('settings')"
     />
     <div class="brand">
+      <!-- the app's bell, as in the favicon and home-screen icon -->
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <path
+          d="M14.5 2.5h3v2.2C22.6 5.5 25.5 9.6 25.5 15v5.5l3 4V26h-25v-1.5l3-4V15c0-5.4 2.9-9.5 8-10.3z"
+        />
+        <circle cx="16" cy="28.3" r="2.6" />
+      </svg>
       <h1 @click="onTitle">Pritrkovalec</h1>
-      <Tag :value="`v${VERSION}`" severity="secondary" rounded />
+      <Tag :value="`v${VERSION}`" rounded class="version" />
     </div>
     <Button
       class="icon-btn"
@@ -68,6 +75,20 @@ header {
   justify-content: center;
   align-items: center;
   gap: 8px;
+}
+.logo {
+  width: 22px;
+  height: 22px;
+  fill: var(--accent);
+  flex: none;
+}
+/* header: beats PrimeVue's own tag colours */
+header .version.p-tag {
+  background: var(--accent);
+  color: var(--chrome-deep);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
 }
 h1 {
   font-size: 20px;

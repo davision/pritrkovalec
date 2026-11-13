@@ -1,7 +1,7 @@
 // Run: npm test
 import assert from 'node:assert/strict'
 import { pieces, type Piece } from './melodies.ts'
-import { beatsPerBar, barLen, pairLines, groups } from './notation.ts'
+import { beatsPerBar, barLen, pairLines, groups, countInBeats } from './notation.ts'
 
 const [mercinova, stirka] = pieces as [Piece, Piece, ...Piece[]]
 assert.equal(beatsPerBar(mercinova.strikes), 3)
@@ -27,5 +27,16 @@ assert.deepEqual(
   groups(first, 3).map((g) => g.length),
   [3, 3],
 ) // wraps between the two bars
+
+// count-in: 3 for 3/4 melodies, 4 for the rest
+const countIns = Object.fromEntries(pieces.map((p) => [p.name, countInBeats(p.strikes)]))
+assert.deepEqual(countIns, {
+  'Mercinova naokoli': 3,
+  'Štirka naokoli': 4,
+  'Mercinova naokoli; s poudarki (variacija)': 3,
+  'Po pet (navadna)': 4,
+  'Po pet naokoli': 4,
+  'Tri dva ena': 3,
+})
 
 console.log('notation ok')

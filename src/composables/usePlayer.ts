@@ -1,7 +1,8 @@
-import { shallowRef, readonly, watch, onScopeDispose, type Ref } from 'vue'
+import { shallowRef, readonly, computed, watch, onScopeDispose, type Ref } from 'vue'
 import { tunings, Bells } from '../lib/bell.ts'
 import { createJudge } from '../lib/score.ts'
 import type { Piece } from '../lib/melodies.ts'
+import { countInBeats } from '../lib/notation.ts'
 
 const LOOKAHEAD = 0.1 // s of audio scheduled ahead
 const GRACE = 0.3 // wait mode: seconds after a note is due before the melody counts as stopped
@@ -13,18 +14,29 @@ export interface PlayerSettings {
   practice: Ref<number> // bell the player rings, -1 = none
   waitForMe: Ref<boolean>
   hostVolume: Ref<number> // % volume of the x strikes
+  minutes: Ref<number> // after this much playing time, finish the current pass and stop; 0 = until stopped
 }
-// a strike due at audio time t (s); wait = the melody pauses there for the player
+export interface PlayerOptions {
+  onTimeUp?: () => void // the chosen playing time is over and the melody reached its end (the caller stops and scores)
+}
+// something due at audio time t (s): strike i sounding, the melody pausing at i for the player (wait),
+// or a count-in beat (count = the number shown, counting down to 1)
 interface Queued {
   i: number
   t: number
   wait?: boolean
+  count?: number
 }
 
 // Plays a piece in time and lets the player ring one bell along with it.
 // Web Audio lookahead scheduler: audio is timed by the AudioContext, the shown position follows via rAF.
-export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: PlayerSettings) {
+export function usePlayer(
+  { piece, rpm, practice, waitForMe, hostVolume, minutes }: PlayerSettings,
+  { onTimeUp }: PlayerOptions = {},
+) {
   const playing = shallowRef(false)
+  const countdown = shallowRef(0) // count-in number on screen, 0 = none
+  const beat = computed(() => 120 / rpm.value) // s per beat: a melody note and its hosting x
   const current = shallowRef(-1) // strike shown as sounding, -1 = at the start
   const waiting = shallowRef(-1) // strike the melody is paused on in wait mode
   const flash = shallowRef(-1) // bell just rung by hand, for a short highlight
@@ -40,6 +52,13 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
   let queue: Queued[] = []
   let waitAt = -1 // scheduler stopped before this strike, waiting for the player
   let currentT = 0 // audio time the current strike sounded, for smooth motion between strikes
+  let countLeft = 0 // count-in clicks still to schedule
+  let countTotal = 0
+  let countTime = 0 // audio time of the next count-in click
+  let played = 0 // s of melody played in earlier stretches (before pauses), for the time limit
+  let since: number | null = null // audio time the melody started in the current stretch
+  let ending = false // time is up: play to the end of the current pass, then stop
+  let endAt: number | null = null // audio time the last strike's beat is over
   const judge = createJudge() // accuracy of this play-along
 
   function audio(): Bells {
@@ -52,7 +71,19 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
   function schedule() {
     if (!bells) return
     const strikes = piece.value.strikes
+    // count-in first: clicks on the beat, a higher one on the first, before the melody's first strike
+    while (countLeft > 0 && countTime < bells.ctx.currentTime + LOOKAHEAD) {
+      bells.click(countTime, countLeft === countTotal)
+      queue.push({ i: -1, t: countTime, count: countLeft })
+      countLeft--
+      countTime += beat.value
+    }
     while (waitAt < 0 && nextTime < bells.ctx.currentTime + LOOKAHEAD) {
+      // time is up: don't start another pass; the end is one strike after the last one
+      if (ending && next === 0) {
+        endAt ??= nextTime
+        break
+      }
       const s = strikes[next]!
       if (waitForMe.value && s.bell === practice.value) {
         waitAt = next
@@ -74,20 +105,44 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
     const now = bells!.ctx.currentTime
     while (queue.length && queue[0]!.t <= now) {
       const q = queue.shift()!
-      if (q.wait) waiting.value = q.i
+      if (q.count) countdown.value = q.count
+      else if (q.wait) waiting.value = q.i
       else {
         current.value = q.i
         currentT = q.t
+        countdown.value = 0
       }
+    }
+    // time limit: only melody time counts, not the count-in or pauses. Once it is reached the melody
+    // still plays to the end of its current pass, so it never stops mid-phrase.
+    if (
+      !ending &&
+      minutes.value &&
+      since !== null &&
+      played + Math.max(0, now - since) >= minutes.value * 60
+    )
+      ending = true
+    if (endAt !== null && now >= endAt) {
+      onTimeUp?.()
+      if (!playing.value) return // the caller stopped it: don't keep drawing
     }
     raf = requestAnimationFrame(draw)
   }
 
-  function play(from = 0) {
+  // countIn: count the beats in with clicks first (Predvajaj); not when the player's own tap started it
+  function play(from = 0, countIn = false) {
     const { ctx } = audio()
     next = from
-    // starting after a strike the player just rang by hand: the next one is one beat away
-    nextTime = ctx.currentTime + (from ? 60 / rpm.value : LOOKAHEAD)
+    if (countIn) {
+      countLeft = countTotal = countInBeats(piece.value.strikes)
+      countTime = ctx.currentTime + LOOKAHEAD
+      nextTime = countTime + countTotal * beat.value // the melody comes in on the beat after the count
+    } else {
+      // starting after a strike the player just rang by hand: the next one is one beat away
+      nextTime = ctx.currentTime + (from ? 60 / rpm.value : LOOKAHEAD)
+    }
+    since = nextTime
+    endAt = null // a pause while finishing the pass: the end is worked out again
     queue = []
     waitAt = waiting.value = -1
     current.value = from - 1
@@ -103,6 +158,9 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
     cancelAnimationFrame(raf)
     playing.value = false
     waitAt = waiting.value = -1
+    countLeft = countdown.value = 0 // clicks not yet scheduled are dropped, the rest are < LOOKAHEAD away
+    if (bells && since !== null) played += Math.max(0, bells.ctx.currentTime - since)
+    since = null
     if (bells) judge.dropAfter(bells.ctx.currentTime * 1000)
   }
 
@@ -110,6 +168,9 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
     pause()
     clickOnly = false
     current.value = -1
+    played = 0
+    ending = false
+    endAt = null
     judge.reset()
   }
 
@@ -122,7 +183,7 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
 
   // Predvajaj: from the start, or after a pause / step continue one beat after the shown note
   function resume() {
-    play(current.value < 0 ? 0 : (current.value + 1) % piece.value.strikes.length)
+    play(current.value < 0 ? 0 : (current.value + 1) % piece.value.strikes.length, true)
   }
 
   function toggle() {
@@ -194,6 +255,8 @@ export function usePlayer({ piece, rpm, practice, waitForMe, hostVolume }: Playe
 
   return {
     playing: readonly(playing),
+    countdown: readonly(countdown),
+    beat,
     current: readonly(current),
     waiting: readonly(waiting),
     flash: readonly(flash),

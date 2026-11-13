@@ -6,11 +6,12 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import StatsPanel from './components/StatsPanel.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import ResultDialog from './components/ResultDialog.vue'
+import CountdownOverlay from './components/CountdownOverlay.vue'
 import MalaScore from './components/score/MalaScore.vue'
 import StaffScore from './components/score/StaffScore.vue'
 import TrackScore from './components/score/TrackScore.vue'
 import GridScore from './components/score/GridScore.vue'
-import { useSettings, PIECE_OPTIONS } from './composables/useSettings.ts'
+import { useSettings, PIECE_OPTIONS, DURATION_OPTIONS } from './composables/useSettings.ts'
 import { usePlayer } from './composables/usePlayer.ts'
 import { usePlayHistory } from './composables/usePlayHistory.ts'
 import { useShortcuts } from './composables/useShortcuts.ts'
@@ -21,9 +22,22 @@ import type { Result } from './lib/score.ts'
 // The page: app bar, settings and statistics panels, melody picker, score and the docked player.
 // It connects the pieces; playback lives in usePlayer, the saved choices in useSettings.
 const settings = useSettings()
-const { pieceIdx, view, practice, tempoIdx, hostVolume, waitForMe, piece, rpm } = settings
-const { playing, current, waiting, flash, position, toggle, step, ring, tap, finish } =
-  usePlayer(settings)
+const { pieceIdx, view, practice, tempoIdx, hostVolume, waitForMe, minutes, piece, rpm } = settings
+// when the chosen playing time (Igraj) is over, it ends like Ustavi
+const {
+  playing,
+  countdown,
+  beat,
+  current,
+  waiting,
+  flash,
+  position,
+  toggle,
+  step,
+  ring,
+  tap,
+  finish,
+} = usePlayer(settings, { onTimeUp: () => stopAndScore() })
 const { stats, add: addPlay } = usePlayHistory()
 
 // same breakpoint as the side panels: desktop shows Bobnarske note whole, smaller screens as a moving track
@@ -78,14 +92,25 @@ const scoreProps = computed(() => ({
     />
     <main>
       <section class="controls">
-        <div class="field">
-          <label>Melodija</label>
+        <div class="field inline piece-field">
+          <label id="piece-label">Melodija</label>
           <Select
             v-model="pieceIdx"
             class="piece-select"
             :options="PIECE_OPTIONS"
             option-label="label"
             option-value="value"
+            aria-labelledby="piece-label"
+          />
+        </div>
+        <div class="field inline">
+          <label id="duration-label">Igraj</label>
+          <Select
+            v-model="minutes"
+            :options="DURATION_OPTIONS"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="duration-label"
           />
         </div>
       </section>
@@ -126,6 +151,7 @@ const scoreProps = computed(() => ({
     </main>
     <StatsPanel :open="showStats" :stats="stats" @close="showStats = false" />
   </div>
+  <CountdownOverlay :count="countdown" :beat="beat" />
   <div
     v-if="showSettings || showStats"
     class="backdrop"
@@ -171,19 +197,65 @@ main {
     display: none;
   }
 }
-/* melody picker: label centred above the select; it doubles as the score's title */
+/* melody and duration pickers, each with its label in front; they wrap onto two lines on narrow phones.
+   The melody picker doubles as the score's title. */
 .controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px 20px;
   padding: 12px 16px;
 }
-.controls .field > label {
-  text-align: center;
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.piece-field {
+  flex: 1 1 260px;
+  max-width: 520px;
+}
+.piece-field .p-select {
+  flex: 1;
+  min-width: 0;
+}
+/* phones: both pickers on one line without their labels (still read out by screen readers) */
+@media (max-width: 767px) {
+  .controls {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .piece-field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  /* tighter selects so the melody name fits */
+  .controls .p-select-label {
+    padding-inline: 0.75rem 0.25rem;
+  }
+  .controls .p-select-dropdown {
+    width: 2rem;
+  }
+  .field.inline > label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 .piece-select .p-select-label {
   font-weight: 700;
 }
-/* the melody picker is the only PrimeVue control on white: give it light colours by hand */
+/* the pickers are the only PrimeVue controls on white: light colours by hand, a soft grey fill */
 .controls .p-select {
-  background: #fff;
+  background: #f4f4f5; /* zinc-100 */
+  border-color: #e4e4e7; /* zinc-200 */
+}
+.controls .p-select:not(.p-disabled):hover {
   border-color: #d4d4d8;
 }
 .controls .p-select-label,

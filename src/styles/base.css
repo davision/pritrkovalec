@@ -13,8 +13,8 @@
   --player-h: 115px; /* height of the docked player, panels and the page end above it */
   --chrome: #141416; /* app bar, side panels, player */
   --chrome-raised: #232328; /* keys, hovered buttons */
-  --chrome-deep: #0c0c0e; /* page behind everything */
-  --accent: #f59e0b; /* amber, bell bronze; same as PrimeVue's primary */
+  --chrome-deep: #03101f; /* page behind everything */
+  --accent: #f4c26c; /* amber, bell bronze; same as PrimeVue's primary */
   color-scheme: light;
 }
 /* Dark chrome around a white score. <html class="dark"> puts the whole app (and PrimeVue, via
@@ -80,6 +80,13 @@ h2 {
 }
 .field > label strong {
   color: var(--ink);
+}
+/* every select in the app is a pill (html: beats PrimeVue's own .p-select rule, which loads later) */
+html .p-select {
+  border-radius: 999px;
+}
+html .p-select-label {
+  padding-inline-start: 1rem; /* keep the text clear of the rounded end */
 }
 /* accent mark (>) above a note, in every notation view */
 .accent {

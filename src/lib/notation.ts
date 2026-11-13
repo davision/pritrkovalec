@@ -35,3 +35,6 @@ export function pairLines(strikes: Strike[], perBar: number): Pair[][] {
 // Po Malavašiču wraps only between these groups of pairs (a bar, or a piece's own `group` when its bar is long)
 export const groups = <T>(line: T[], len: number): T[][] =>
   Array.from({ length: Math.ceil(line.length / len) }, (_, g) => line.slice(g * len, (g + 1) * len))
+
+// Count-in before the melody: 3 for melodies in 3/4 (a bar of 3, 6, 9 … beats, e.g. Mercinova, Tri dva ena), else 4
+export const countInBeats = (strikes: Strike[]) => (beatsPerBar(strikes) % 3 === 0 ? 3 : 4)

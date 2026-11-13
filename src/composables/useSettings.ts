@@ -1,7 +1,7 @@
 import { shallowRef, computed, watch, type Ref } from 'vue'
 import { pieces } from '../lib/melodies.ts'
 
-export const TEMPOS = [150, 180, 200, 250] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
+export const TEMPOS = [150, 180, 210, 230] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
 export const PIECE_OPTIONS = pieces.map((p, i) => ({ label: p.name, value: i }))
 export type View = 'drum' | 'mala' | 'staff' | 'simple'
 export const VIEW_OPTIONS: { label: string; value: View }[] = [
@@ -16,6 +16,18 @@ export const BELL_OPTIONS = [-1, 0, 1, 2, 3].map((b) => ({
   value: b,
 }))
 
+// how long a play-along lasts: 0 = until stopped, else about this many minutes (read after the "Igraj"
+// label); ~ because the melody always plays to the end of its pass
+const minutesLabel = (m: number) =>
+  m === 1 ? 'minuto' : m === 2 ? 'minuti' : m <= 4 ? 'minute' : 'minut'
+export const DURATION_OPTIONS = [
+  { label: 'neskončno', value: 0 },
+  ...Array.from({ length: 10 }, (_, k) => ({
+    label: `~${k + 1} ${minutesLabel(k + 1)}`,
+    value: k + 1,
+  })),
+]
+
 const KEY = 'pritrkovalec-settings'
 
 // The player's choices, saved across reloads. Each saved value is checked before use, so an old or broken
@@ -27,6 +39,7 @@ export function useSettings() {
   const tempoIdx = shallowRef(TEMPOS.indexOf(180))
   const hostVolume = shallowRef(55) // % volume of the x strikes, 0 = only the lead melody plays
   const waitForMe = shallowRef(false) // pause before each practice-bell note until the player rings it
+  const minutes = shallowRef(0) // play for this many minutes, then stop; 0 = until stopped
 
   // each saved setting with the check its stored value must pass
   const saved: Record<string, [Ref<unknown>, (v: unknown) => boolean]> = {
@@ -41,6 +54,7 @@ export function useSettings() {
       (v) => Number.isFinite(v) && (v as number) >= 0 && (v as number) <= 100,
     ],
     waitForMe: [waitForMe, (v) => typeof v === 'boolean'],
+    minutes: [minutes, (v) => DURATION_OPTIONS.some((o) => o.value === v)],
   }
   try {
     const stored = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}
@@ -63,6 +77,7 @@ export function useSettings() {
     tempoIdx,
     hostVolume,
     waitForMe,
+    minutes,
     piece: computed(() => pieces[pieceIdx.value]!),
     rpm: computed(() => TEMPOS[tempoIdx.value]!),
   }
