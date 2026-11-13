@@ -8,6 +8,7 @@ import Slider from 'primevue/slider'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
+import Tag from 'primevue/tag'
 import { hit, score, WINDOWS, MISS_MS } from './score.js'
 import { confetti } from './confetti.js'
 import '@fontsource/bravura' // SMuFL music font (SIL OFL) for the staff view
@@ -138,6 +139,28 @@ let waitAt = -1 // scheduler stopped before this strike, waiting for the player
 let notes = [] // practice-bell beats of this play-along, for the accuracy score
 let stray = 0 // taps that matched no beat
 const result = ref(null) // score shown in the dialog after Ustavi
+// Play history for the statistics dialog, newest first, kept in localStorage. Capped so storage can't fill up;
+// a broken entry is dropped on load instead of breaking the list.
+const PLAYS_KEY = 'pritrkovalec-plays'
+const plays = ref([])
+try {
+  const saved = JSON.parse(localStorage.getItem(PLAYS_KEY))
+  if (Array.isArray(saved)) plays.value = saved.filter((p) => typeof p?.piece === 'string' && Number.isFinite(p.score) && Number.isFinite(p.at))
+} catch {}
+function savePlay(r) {
+  plays.value = [{ piece: piece.value.name, score: r.score, bell: practice.value + 1, tempo: rpm.value, at: Date.now() }, ...plays.value].slice(0, 500)
+  try {
+    localStorage.setItem(PLAYS_KEY, JSON.stringify(plays.value))
+  } catch {}
+}
+const showStats = ref(false)
+// one entry per song, most recently played first (Map keeps the order songs are first seen in)
+const stats = computed(() => {
+  const by = new Map()
+  for (const p of plays.value) by.has(p.piece) ? by.get(p.piece).push(p) : by.set(p.piece, [p])
+  return [...by].map(([name, list]) => ({ name, list, best: Math.max(...list.map((p) => p.score)) }))
+})
+const fmtDate = (at) => new Date(at).toLocaleString('sl-SI', { dateStyle: 'short', timeStyle: 'short' })
 const verdict = (s) => (s >= 95 ? 'Odlično!' : s >= 85 ? 'Zelo dobro' : s >= 70 ? 'Dobro' : s >= 50 ? 'Še malo vaje' : 'Vadi naprej')
 const LOOKAHEAD = 0.1
 const GRACE = 0.3 // wait mode: seconds after a note is due before the melody counts as stopped
@@ -214,6 +237,7 @@ function finish() {
   const due = notes.filter((n) => n.off != null || n.ms + MISS_MS < now)
   if (due.length) {
     result.value = score(due, stray)
+    savePlay(result.value)
     if (result.value.score === 100) confetti()
   }
   stop()
@@ -312,8 +336,30 @@ onBeforeUnmount(() => {
 <template>
   <main>
     <header>
-      <h1>Pritrkovalec v{{ VERSION }}</h1>
+      <h1>Pritrkovalec</h1>
+      <Tag :value="`v${VERSION}`" severity="secondary" rounded class="version" />
+      <Button class="stats-btn" severity="secondary" outlined aria-label="Statistika igranja" title="Statistika" @click="showStats = true">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M3 21h18M6 17v-6M11 17V5M16 17v-9M21 17v-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+        </svg>
+      </Button>
     </header>
+
+    <Dialog v-model:visible="showStats" modal dismissable-mask header="Statistika" class="stats-dialog">
+      <p v-if="!stats.length" class="stats-empty">Še ni odigranih melodij. Izberi zvon, igraj zraven in na koncu pritisni Ustavi.</p>
+      <details v-for="s in stats" :key="s.name" class="stats-song">
+        <summary>
+          <span>{{ s.name }}<small>{{ s.list.length }}× igrano</small></span>
+          <strong :title="'Najboljši rezultat'">{{ s.best }}</strong>
+        </summary>
+        <ul>
+          <li v-for="p in s.list" :key="p.at">
+            <span>{{ fmtDate(p.at) }}<small>zvon {{ p.bell }} · {{ p.tempo }}/min</small></span>
+            <strong>{{ p.score }}</strong>
+          </li>
+        </ul>
+      </details>
+    </Dialog>
 
     <section class="controls">
       <div class="field">
@@ -616,10 +662,71 @@ main {
   padding: 16px;
 }
 header {
+  position: relative;
   display: flex;
-  align-items: baseline;
-  gap: 24px;
+  align-items: center;
+  gap: 10px;
   justify-content: center;
+}
+.stats-btn {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+/* statistics dialog: songs with their best score, each expands into its plays */
+.stats-dialog {
+  width: min(94vw, 440px);
+  max-height: 80vh;
+}
+.stats-empty {
+  color: var(--muted);
+}
+.stats-song {
+  border-bottom: 1px solid var(--line);
+}
+.stats-song summary,
+.stats-song li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.stats-song summary {
+  padding: 12px 0;
+  cursor: pointer;
+}
+.stats-song summary::-webkit-details-marker {
+  display: none;
+}
+.stats-song summary::before {
+  content: '▸';
+  color: var(--muted);
+  transition: rotate 0.15s;
+}
+.stats-song[open] summary::before {
+  rotate: 90deg;
+}
+.stats-song summary span {
+  flex: 1;
+}
+.stats-song small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.stats-song summary strong {
+  font: 700 22px Georgia, serif;
+}
+.stats-song ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0 0 0 22px;
+}
+.stats-song li {
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
 }
 h1 {
   font-family: Georgia, 'Times New Roman', serif;
@@ -1160,12 +1267,27 @@ kbd {
     padding: 8px 12px;
     margin-top: 0;
   }
+  /* app bar: title and version on the left, statistics on the right, stays on top while scrolling */
   header {
     order: -2;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    justify-content: flex-start;
+    margin: -8px -8px 8px; /* full width over main's padding */
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px;
+    background: rgba(251, 250, 246, 0.94); /* --paper */
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
   }
   h1 {
-    font-size: 18px;
-    margin: 4px 0 8px;
+    font-size: 20px;
+    margin: 0;
+  }
+  .stats-btn {
+    position: static;
+    margin-left: auto;
   }
   h2 {
     margin: 4px 0 8px;
