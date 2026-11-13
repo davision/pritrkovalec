@@ -1,0 +1,148 @@
+/* Notes on four bell lanes, shared by Bobnarske note (DrumTicker) and Grafični zapis (GridScore).
+   The view name (.drum / .seq) is a class on the score section in App.vue. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(48, 1fr);
+  grid-template-rows: repeat(4, 23px);
+  position: relative;
+}
+.line {
+  grid-column: 1 / -1;
+  align-self: center;
+  height: 1px;
+  background: var(--line);
+  transition:
+    background 0.1s,
+    height 0.1s;
+}
+/* Sekvenca: each bell's line in its own colour */
+:where(.seq) .line {
+  background: var(--c);
+  opacity: 0.45;
+}
+.line.mine {
+  background: var(--c);
+  opacity: 0.5;
+}
+.line.now,
+.line.hit {
+  height: 3px;
+  background: var(--c);
+  opacity: 1;
+}
+/* Bobnarske note: a table like the printed score, each bell in its own lane between lines */
+:where(.drum) .grid {
+  border: 1px solid var(--ink);
+}
+:where(.drum) .line {
+  align-self: stretch;
+  height: auto;
+  background: none;
+  border-bottom: 1px solid var(--ink);
+}
+:where(.drum) .line:nth-child(4) {
+  border-bottom: 0;
+}
+:where(.drum) .line.now,
+:where(.drum) .line.hit {
+  height: auto; /* .line.now's 3px would shrink the lane and double its border */
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+}
+/* the practice bell's line; replaces the whole-row tint so only that line is yellow */
+.lane {
+  grid-column: 1 / -1;
+  background: var(--lane);
+  border-radius: 11px;
+}
+.col-hl {
+  grid-row: 1 / -1;
+  background: var(--col-hl);
+  border-radius: 3px;
+  margin: -4px 0;
+}
+.note {
+  position: relative;
+  justify-self: center;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  background: var(--c);
+  color: #fff;
+  border-radius: 50%;
+  z-index: 1;
+  transition:
+    transform 0.08s,
+    background 0.08s;
+}
+.note.x {
+  opacity: var(--host-opacity, 1);
+}
+/* Sekvenca: hosting strike as a diamond; `rotate` composes with the .now/.waiting `transform: scale` */
+:where(.seq) .note.x {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  rotate: 45deg;
+}
+/* Bobnarske note: numbered squares and x like the PDF; :where keeps specificity low so .now/.waiting still win */
+:where(.drum) .note {
+  background: var(--ink);
+  border-radius: 2px;
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  font:
+    700 13px Roboto,
+    sans-serif;
+}
+/* the x needs a bit more size to read as clearly as the numbered squares */
+:where(.drum) .note.x {
+  background: none;
+  color: var(--ink);
+  font-size: 17px;
+}
+.note.pause {
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
+  z-index: 0;
+}
+.bar-line {
+  grid-row: 1 / 5;
+  justify-self: start;
+  width: 0;
+  border-left: 1px solid var(--muted);
+  margin: -4px 0 -4px -0.5px;
+}
+.drum .bar-line {
+  border-color: var(--ink);
+  margin: 0 0 0 -0.5px;
+}
+.drum .col-hl {
+  margin: 0; /* stay inside the table border */
+  border-radius: 0;
+}
+.note.waiting {
+  background: var(--c);
+  animation: pulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes pulse {
+  to {
+    transform: scale(1.35);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 30%, transparent);
+  }
+}
+.note.past {
+  opacity: 0.55;
+}
+.note.mine {
+  outline: 2px solid var(--c);
+  outline-offset: 1px;
+}
+.note.now {
+  background: var(--c);
+  color: #fff;
+  opacity: 1;
+  transform: scale(1.35);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 35%, transparent);
+}

@@ -1,0 +1,104 @@
+/* Design tokens and global rules. Component styles live in their components. */
+:root {
+  --paper: #fbfaf6;
+  --ink: #1b1b1b;
+  --line: #c9c6bc;
+  --muted: #77736a;
+  --b0: #e4572e;
+  --b1: #2e86de;
+  --b2: #17a673;
+  --b3: #9b59b6;
+  --col-hl: rgba(27, 27, 27, 0.07);
+  --lane: #fff0b0;
+  --player-h: 169px; /* height of the docked player, panels and the page end above it */
+  --chrome: #141416; /* app bar, side panels, player */
+  --chrome-raised: #232328; /* keys, hovered buttons */
+  --chrome-deep: #0c0c0e; /* page behind everything */
+  --accent: #f59e0b; /* amber, bell bronze; same as PrimeVue's primary */
+  color-scheme: light;
+}
+/* Dark chrome around a white score. <html class="dark"> puts the whole app (and PrimeVue, via
+   darkModeSelector '.dark') in dark mode; the score column below switches back to light. */
+.dark {
+  --ink: #f4f4f5;
+  --muted: #a1a1aa;
+  --line: #2a2a30;
+  --paper: var(--chrome);
+  color: var(--ink);
+  color-scheme: dark;
+}
+/* the score column is the light island: paper colours, black notes (the player inside it is .dark again) */
+main {
+  --ink: #1b1b1b;
+  --muted: #77736a;
+  --line: #c9c6bc;
+  --paper: #fbfaf6;
+  color: var(--ink);
+  color-scheme: light;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--chrome-deep);
+  color: var(--ink);
+  font:
+    15px/1.4 Roboto,
+    system-ui,
+    sans-serif;
+}
+h2 {
+  font-size: 18px;
+  text-align: center;
+  margin: 4px 0 8px;
+}
+/* each bell's colour as --c, used by notes, lines, bell icons and the tap circle */
+.b0 {
+  --c: var(--b0);
+}
+.b1 {
+  --c: var(--b1);
+}
+.b2 {
+  --c: var(--b2);
+}
+.b3 {
+  --c: var(--b3);
+}
+
+/* a labelled form field (melody picker, settings) */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.field > label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.field > label strong {
+  color: var(--ink);
+}
+/* accent mark (>) above a note, in every notation view */
+.accent {
+  position: absolute;
+  top: -16px;
+  font:
+    700 13px Roboto,
+    sans-serif;
+  color: var(--ink);
+}
+/* glow pulse while the melody waits for the player (notes and the tap circle) */
+@keyframes pulse-bg {
+  to {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 30%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

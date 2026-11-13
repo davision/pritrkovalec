@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process'
 // For a new major: raise MAJOR and set SINCE to the commit count of the commit that starts it.
 const MAJOR = 2
 const SINCE = 16 // v2.0 = the 16th commit (the redesign with side panels)
-let minor = '?' // built outside a git checkout
+let minor: number | string = '?' // built outside a git checkout
 try {
   minor = Math.max(0, +execSync('git rev-list --count HEAD').toString().trim() - SINCE)
 } catch {}

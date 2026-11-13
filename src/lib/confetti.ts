@@ -12,6 +12,7 @@ export function confetti() {
   const W = (c.width = innerWidth * dpr)
   const H = (c.height = innerHeight * dpr)
   const ctx = c.getContext('2d')
+  if (!ctx) return c.remove()
   // speeds scale with the screen height, so the burst reaches 40–95 % up on a phone and a monitor alike
   const G = 1.5 * H
   const FALL = 0.22 * H // terminal speed: paper flutters instead of dropping
@@ -27,13 +28,14 @@ export function confetti() {
       s: (7 + Math.random() * 6) * dpr,
       r: Math.random() * 6,
       vr: (Math.random() - 0.5) * 14,
-      color: COLORS[i % COLORS.length],
+      color: COLORS[i % COLORS.length]!,
     }
   })
 
   let last = performance.now()
   let t = 0
-  function frame(now) {
+  // an arrow, not a hoisted function, so TypeScript keeps ctx narrowed to non-null inside it
+  const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000) // a stalled tab doesn't teleport the pieces
     last = now
     t += dt
@@ -53,7 +55,8 @@ export function confetti() {
       ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2)
       ctx.restore()
     }
-    t < DURATION ? requestAnimationFrame(frame) : c.remove()
+    if (t < DURATION) requestAnimationFrame(frame)
+    else c.remove()
   }
   requestAnimationFrame(frame)
 }

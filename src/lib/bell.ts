@@ -1,15 +1,15 @@
 // Strike note as semitones from a1 (440 Hz) plus deviation in 1/16 semitone, as bell inspection reports give it.
-const note = (semitones, sixteenths = 0) => 440 * 2 ** ((semitones + sixteenths / 16) / 12)
+const note = (semitones: number, sixteenths = 0) => 440 * 2 ** ((semitones + sixteenths / 16) / 12)
 
 // Strike-note frequencies, bell 1 (smallest) first.
-export const tunings = {
+export const tunings: Record<string, number[]> = {
   'Naši zvonovi (d1-8 fis1-7 a1-4 h1-6)': [note(-7, -8), note(-3, -7), note(0, -4), note(2, -6)],
   "Te Deum (a' g' f' d')": [440.0, 392.0, 349.23, 293.66],
   "Durov akord (c'' g' e' c')": [523.25, 392.0, 329.63, 261.63],
 }
 
 // [ratio to strike note, amplitude, decay seconds]: rough church-bell partials (hum, prime, minor tierce, quint, nominal…)
-const PARTIALS = [
+const PARTIALS: [ratio: number, amp: number, decay: number][] = [
   [0.5, 0.35, 3],
   [1, 0.5, 2.4],
   [1.2, 0.4, 1.8],
@@ -37,7 +37,7 @@ export class Bells {
   }
 
   // metronome tick, higher on the first beat of the bar
-  click(t, downbeat = false) {
+  click(t: number, downbeat = false) {
     const osc = this.ctx.createOscillator()
     const gain = this.ctx.createGain()
     osc.frequency.value = downbeat ? 1800 : 1200
@@ -50,8 +50,8 @@ export class Bells {
 
   // Each bell's sound is computed once into a buffer; a strike is then just 2 audio nodes instead of 14
   // live oscillators, which phones can't keep up with at 3 strikes a second.
-  #buffers = new Map()
-  buffer(freq) {
+  #buffers = new Map<number, AudioBuffer>()
+  buffer(freq: number) {
     let buf = this.#buffers.get(freq)
     if (buf) return buf
     const sr = this.ctx.sampleRate
@@ -66,14 +66,14 @@ export class Bells {
       let env = amp
       for (let n = 0; n < end; n++) {
         const g = n < attack ? (amp * n) / attack : (env *= fall)
-        data[n] += g * Math.sin(w * n)
+        data[n]! += g * Math.sin(w * n)
       }
     }
     this.#buffers.set(freq, buf)
     return buf
   }
 
-  ring(freq, t = this.ctx.currentTime, accent = false, volume = 1) {
+  ring(freq: number, t = this.ctx.currentTime, accent = false, volume = 1) {
     const src = this.ctx.createBufferSource()
     const gain = this.ctx.createGain()
     src.buffer = this.buffer(freq)

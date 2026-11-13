@@ -23,9 +23,10 @@ jobs:
           fetch-depth: 0 # full history: the version number is the commit count
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # runs the .ts tests natively (type stripping)
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3

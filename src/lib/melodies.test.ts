@@ -1,9 +1,10 @@
 // Checks the generated pieces against the PDF transcription. Run: npm test
 import assert from 'node:assert/strict'
-import { pieces, ROW } from './melodies.js'
+import { pieces, ROW, type Piece, type Strike } from './melodies.ts'
 
-const [mercinova, stirka, variacija, popet] = pieces
-const bells = (s, from, n) => s.slice(from, from + n).map((x) => x.bell + 1)
+const [mercinova, stirka, variacija, popet] = pieces as [Piece, Piece, Piece, Piece, ...Piece[]]
+const bells = (s: Strike[], from: number, n: number) =>
+  s.slice(from, from + n).map((x) => x.bell + 1)
 
 // PDF row 1: 1 x 2 x 3 x (bell 4 hosting), then bell 2 starts with bell 1 hosting
 assert.deepEqual(bells(mercinova.strikes, 0, 12), [1, 4, 2, 4, 3, 4, 1, 4, 2, 4, 3, 4])
@@ -28,6 +29,9 @@ assert.deepEqual(
 assert.equal(popet.strikes.length, 64)
 assert.deepEqual(bells(popet.strikes, 0, 8), [1, 4, 3, 4, 3, 4, 3, 4])
 assert.deepEqual(bells(popet.strikes, 32, 4), [2, 3, 4, 3])
-assert.deepEqual(popet.strikes.slice(0, 10).map((s) => s.label), ['1', 'x', '2', 'x', '3', 'x', '4', 'x', '1', 'x'])
+assert.deepEqual(
+  popet.strikes.slice(0, 10).map((s) => s.label),
+  ['1', 'x', '2', 'x', '3', 'x', '4', 'x', '1', 'x'],
+)
 
 console.log('melodies ok')

@@ -1,745 +1,153 @@
-<script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { pieces, ROW } from './melodies.js'
-import { tunings, Bells } from './bell.js'
+<script setup lang="ts">
+import { shallowRef, computed } from 'vue'
 import Select from 'primevue/select'
-import SelectButton from 'primevue/selectbutton'
-import Slider from 'primevue/slider'
-import ToggleSwitch from 'primevue/toggleswitch'
-import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
-import Tag from 'primevue/tag'
-import { hit, score, WINDOWS, MISS_MS } from './score.js'
-import { confetti } from './confetti.js'
-import '@fontsource/bravura' // SMuFL music font (SIL OFL) for the staff view
+import AppHeader from './components/AppHeader.vue'
+import SettingsPanel from './components/SettingsPanel.vue'
+import StatsPanel from './components/StatsPanel.vue'
+import PlayerBar from './components/PlayerBar.vue'
+import ResultDialog from './components/ResultDialog.vue'
+import MalaScore from './components/score/MalaScore.vue'
+import StaffScore from './components/score/StaffScore.vue'
+import DrumTicker from './components/score/DrumTicker.vue'
+import GridScore from './components/score/GridScore.vue'
+import { useSettings, PIECE_OPTIONS } from './composables/useSettings.ts'
+import { usePlayer } from './composables/usePlayer.ts'
+import { usePlayHistory } from './composables/usePlayHistory.ts'
+import { useShortcuts } from './composables/useShortcuts.ts'
+import { confetti } from './lib/confetti.ts'
+import type { Result } from './lib/score.ts'
 
-const VERSION = __VERSION__ // injected at build time, see vite.config.js
-const pieceIdx = ref(0)
-const TEMPOS = [150, 180, 200, 250] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
-const tempoIdx = ref(TEMPOS.indexOf(180))
-const rpm = computed(() => TEMPOS[tempoIdx.value])
-const pieceOptions = pieces.map((p, i) => ({ label: p.name, value: i }))
-const tuningOptions = Object.keys(tunings)
-const viewOptions = [
-  { label: 'Bobnarske note', value: 'drum' },
-  { label: 'Grafični zapis', value: 'seq' },
-  { label: 'Po Malavašiču', value: 'mala' },
-  { label: 'Notni in številčni zapis', value: 'staff' },
-  { label: 'Poenostavljen notni zapis', value: 'simple' },
-]
-const bellOptions = [-1, 0, 1, 2, 3].map((b) => ({ label: b < 0 ? 'brez' : String(b + 1), value: b }))
-const tuning = ref(Object.keys(tunings)[0])
-const practice = ref(-1) // muted bell the user plays with space, -1 = none
-const hostVolume = ref(55) // % volume of the x strikes, 0 = only the lead melody plays
-const playing = ref(false)
-const current = ref(-1)
-const waitForMe = ref(false) // pause before each practice-bell note until space is pressed
-const waiting = ref(-1) // strike index the melody is paused on
-const metronome = ref(false)
-const view = ref('mala') // score style, one of viewOptions; default Po Malavašiču
-const clickOnly = ref(false) // metronome-only playback, bells silent
-const flash = ref(-1)
+// The page: app bar, settings and statistics panels, melody picker, score and the docked player.
+// It connects the pieces; playback lives in usePlayer, the saved choices in useSettings.
+const settings = useSettings()
+const { pieceIdx, view, practice, tempoIdx, hostVolume, waitForMe, piece, rpm } = settings
+const { playing, current, waiting, flash, position, toggle, step, ring, tap, finish } =
+  usePlayer(settings)
+const { stats, add: addPlay } = usePlayHistory()
 
-// Settings survive a reload. Each saved value is checked before use, so an old or broken entry
-// (e.g. a piece that was since renamed) just keeps that setting's default. The piece is kept by name, not index.
-const SETTINGS = {
-  view: [view, (v) => viewOptions.some((o) => o.value === v)],
-  practice: [practice, (v) => bellOptions.some((o) => o.value === v)],
-  tempoIdx: [tempoIdx, (v) => Number.isInteger(v) && v >= 0 && v < TEMPOS.length],
-  hostVolume: [hostVolume, (v) => Number.isFinite(v) && v >= 0 && v <= 100],
-  waitForMe: [waitForMe, (v) => typeof v === 'boolean'],
+const showSettings = shallowRef(false) // panels only open/close below 1200px
+const showStats = shallowRef(false)
+const result = shallowRef<Result | null>(null) // accuracy shown after Ustavi
+
+// Ustavi / Esc: stop, show the accuracy and keep it in the statistics; 100 earns confetti
+function stopAndScore() {
+  const scored = { piece: piece.value.name, bell: practice.value + 1, tempo: rpm.value }
+  const r = finish()
+  if (!r) return
+  result.value = r
+  addPlay({ ...scored, score: r.score })
+  if (r.score === 100) confetti()
 }
-try {
-  const saved = JSON.parse(localStorage.getItem('pritrkovalec-settings')) ?? {}
-  for (const [k, [r, ok]] of Object.entries(SETTINGS)) if (ok(saved[k])) r.value = saved[k]
-  const i = pieces.findIndex((p) => p.name === saved.piece)
-  if (i >= 0) pieceIdx.value = i
-} catch {} // storage blocked (private mode) or unreadable: start with defaults
-watch([pieceIdx, ...Object.values(SETTINGS).map(([r]) => r)], () => {
-  const out = Object.fromEntries(Object.entries(SETTINGS).map(([k, [r]]) => [k, r.value]))
-  try {
-    localStorage.setItem('pritrkovalec-settings', JSON.stringify({ ...out, piece: pieces[pieceIdx.value].name }))
-  } catch {}
+
+useShortcuts({
+  escape: () =>
+    showSettings.value || showStats.value
+      ? (showSettings.value = showStats.value = false)
+      : stopAndScore(),
+  bell: (b) => (practice.value = b),
+  toggleWait: () => (waitForMe.value = !waitForMe.value),
+  togglePlay: toggle,
+  step,
+  tap,
 })
 
-const piece = computed(() => pieces[pieceIdx.value])
-const cols = computed(() => Math.min(ROW, piece.value.strikes.length))
-const freqs = computed(() => tunings[tuning.value])
-// a beat = one melody note + its x, a bar = one pass of the melody (Mercinova 3/4, Štirka 4/4)
-const beatsPerBar = computed(() => Math.max(...piece.value.strikes.map((s) => +s.label || 0)))
-// strikes per bar = distance to the next melody note 1 (Mercinova 6 with the x strikes, Po pet 4); rows always start on a bar
-const barLen = computed(() => piece.value.strikes.findIndex((s, i) => i > 0 && s.label === '1'))
-const rows = computed(() => {
-  const out = []
-  piece.value.strikes.forEach((s, i) => (out[Math.floor(i / cols.value)] ??= []).push({ ...s, i, col: i % cols.value }))
-  return out
-})
-const currentRow = computed(() => (current.value < 0 ? -1 : Math.floor(current.value / cols.value)))
-// Po Malavašiču and the staff views: each melody note with its hosting x strike (if any).
-// New line when the hosting bell changes (a new phase) or after two bars.
-const malaLines = computed(() => {
-  const lines = []
-  const s = piece.value.strikes
-  for (let i = 0; i < s.length; ) {
-    const host = s[i + 1]?.label === 'x' ? { ...s[i + 1], i: i + 1 } : null
-    const pair = { lead: { ...s[i], i }, host }
-    i += host ? 2 : 1
-    const last = lines.at(-1)
-    const sameLine = last && last.length < 2 * beatsPerBar.value && last[0].host?.bell === host?.bell
-    sameLine ? last.push(pair) : lines.push([pair])
-  }
-  return lines
-})
-// Po Malavašiču wraps only between these groups (a bar, or a piece's own `group` when its bar is long)
-const groupLen = computed(() => piece.value.group ?? beatsPerBar.value)
-const groups = (line) => Array.from({ length: Math.ceil(line.length / groupLen.value) }, (_, g) => line.slice(g * groupLen.value, (g + 1) * groupLen.value))
-// Notni in številčni zapis: percussion staff, one line per bell (bell 1 at the bottom).
-// Melody = quarter note, stem down; hosting bell = eighth on the off-beat, stem up. Numbers underneath.
-// Drawn with SMuFL glyphs from the Bravura font (font-size = 4 staff spaces); offsets below are in staff spaces (sp) from Bravura's metadata.
-const ST = { top: 64, gap: 12, x0: 72, beat: 72, pad: 24 }
-const SP = ST.gap
-const HEAD_W = 1.18 * SP // noteheadBlack width
-const STEM_W = 0.12 * SP
-const STEM_LEN = 3.5 * SP
-const G = { head: '\uE0A4', headX: '\uE0A9', flag8Up: '\uE240', rest8: '\uE4E6', percClef: '\uE069', accent: '\uE4A0', digit: (n) => String.fromCharCode(0xe080 + n) }
-const STAFF_H = 176
-const simple = computed(() => view.value === 'simple') // poenostavljen: heads only, x for the hosting bell, bell 1 on top
-const gap = computed(() => (simple.value ? 22 : SP)) // simplified staff has wider line spacing, same note size
-const lineY = (bell) => ST.top + (simple.value ? bell : 3 - bell) * gap.value
-const barX = (m) => ST.x0 + m * (beatsPerBar.value * ST.beat + ST.pad)
-const beatX = (k) => barX(Math.floor(k / beatsPerBar.value)) + ST.pad + (k % beatsPerBar.value) * ST.beat
-const staffWidth = (line) => barX(line.length / beatsPerBar.value) + 24 // room for the end repeat
-const noteClass = (n) => [`b${n.bell}`, { now: n.i === current.value, waiting: n.i === waiting.value, past: n.i < current.value, mine: n.bell === practice.value }]
-const currentLine = computed(() => malaLines.value.findIndex((l) => l.some((p) => p.lead.i === current.value || p.host?.i === current.value)))
-const currentBell = computed(() => piece.value.strikes[current.value]?.bell ?? -1)
-
-// Bobnarske note: one endless strip sliding under a fixed playhead. The piece is drawn 3× so the
-// playhead (on the middle copy) always has notes on both sides; wrapping jumps one copy back, invisibly.
-const COL = 30 // px per strike
-const COPIES = 3 // shortcut: assumes one copy is wider than the screen (≥ 48 strikes); add copies for shorter pieces
-const strip = ref(null)
-const tape = computed(() => {
-  const s = piece.value.strikes
-  return Array.from({ length: COPIES }, (_, c) => s.map((x, i) => ({ ...x, i, j: c * s.length + i }))).flat()
-})
-const tapeBars = computed(() => tape.value.filter((s) => s.j && s.j % barLen.value === 0).map((s) => s.j))
-let currentT = 0 // audio time the current strike sounded, for smooth motion between strikes
-
-// set imperatively every frame: binding it through Vue would re-render the whole score 60× a second
-function placeStrip() {
-  if (!strip.value) return
-  const frac = playing.value ? Math.min(1, Math.max(0, ((bells.ctx.currentTime - currentT) * rpm.value) / 60)) : 0
-  const pos = piece.value.strikes.length + current.value + frac
-  strip.value.style.transform = `translateX(${-(pos + 0.5) * COL}px)`
-}
-
-// Web Audio lookahead scheduler: audio is timed by the AudioContext, visuals follow via rAF.
-let bells, timer, raf, next, nextTime, queue
-let waitAt = -1 // scheduler stopped before this strike, waiting for the player
-let notes = [] // practice-bell beats of this play-along, for the accuracy score
-let stray = 0 // taps that matched no beat
-const result = ref(null) // score shown in the dialog after Ustavi
-// Play history for the statistics dialog, newest first, kept in localStorage. Capped so storage can't fill up;
-// a broken entry is dropped on load instead of breaking the list.
-const PLAYS_KEY = 'pritrkovalec-plays'
-const plays = ref([])
-try {
-  const saved = JSON.parse(localStorage.getItem(PLAYS_KEY))
-  if (Array.isArray(saved)) plays.value = saved.filter((p) => typeof p?.piece === 'string' && Number.isFinite(p.score) && Number.isFinite(p.at))
-} catch {}
-function savePlay(r) {
-  plays.value = [{ piece: piece.value.name, score: r.score, bell: practice.value + 1, tempo: rpm.value, at: Date.now() }, ...plays.value].slice(0, 500)
-  try {
-    localStorage.setItem(PLAYS_KEY, JSON.stringify(plays.value))
-  } catch {}
-}
-const showStats = ref(false)
-const showSettings = ref(false)
-// one entry per song, most recently played first (Map keeps the order songs are first seen in)
-const stats = computed(() => {
-  const by = new Map()
-  for (const p of plays.value) by.has(p.piece) ? by.get(p.piece).push(p) : by.set(p.piece, [p])
-  return [...by].map(([name, list]) => ({ name, list, best: Math.max(...list.map((p) => p.score)) }))
-})
-const fmtDate = (at) => new Date(at).toLocaleString('sl-SI', { dateStyle: 'short', timeStyle: 'short' })
-const verdict = (s) => (s >= 95 ? 'Odlično!' : s >= 85 ? 'Zelo dobro' : s >= 70 ? 'Dobro' : s >= 50 ? 'Še malo vaje' : 'Vadi naprej')
-const LOOKAHEAD = 0.1
-const GRACE = 0.3 // wait mode: seconds after a note is due before the melody counts as stopped
-
-function audio() {
-  bells ??= new Bells()
-  bells.resume()
-  freqs.value.forEach((f) => bells.buffer(f)) // render all 4 bells up front, not on the first tap
-  return bells
-}
-
-function schedule() {
-  const strikes = piece.value.strikes
-  while (waitAt < 0 && nextTime < bells.ctx.currentTime + LOOKAHEAD) {
-    const s = strikes[next]
-    if (waitForMe.value && s.bell === practice.value) {
-      waitAt = next
-      queue.push({ i: next, t: nextTime + GRACE, wait: true }) // show the pause once the grace period is over
-      return
-    }
-    const volume = s.label === 'x' ? hostVolume.value / 100 : 1
-    if (!clickOnly.value && s.bell !== practice.value && volume > 0) bells.ring(freqs.value[s.bell], nextTime, s.accent, volume)
-    if (s.bell === practice.value) notes.push({ ms: nextTime * 1000, off: null }) // a beat the player should hit
-    if ((metronome.value || clickOnly.value) && s.label !== 'x') bells.click(nextTime, s.label === '1')
-    queue.push({ i: next, t: nextTime })
-    nextTime += 60 / rpm.value
-    next = (next + 1) % strikes.length
-  }
-}
-
-function draw() {
-  while (queue.length && queue[0].t <= bells.ctx.currentTime) {
-    const q = queue.shift()
-    q.wait ? (waiting.value = q.i) : ((current.value = q.i), (currentT = q.t))
-  }
-  placeStrip()
-  raf = requestAnimationFrame(draw)
-}
-
-function play(from = 0) {
-  audio()
-  next = from
-  // starting after a strike the user just rang by hand: the next one is one beat away
-  nextTime = bells.ctx.currentTime + (from ? 60 / rpm.value : LOOKAHEAD)
-  queue = []
-  waitAt = waiting.value = -1
-  current.value = from - 1
-  currentT = nextTime - 60 / rpm.value // glide from the shown note into the first one
-  timer = setInterval(schedule, 25)
-  raf = requestAnimationFrame(draw)
-  playing.value = true
-}
-
-// pause keeps the position (current), stop rewinds to the start
-function pause() {
-  clearInterval(timer)
-  cancelAnimationFrame(raf)
-  playing.value = false
-  waitAt = waiting.value = -1
-  if (bells) notes = notes.filter((n) => n.ms <= bells.ctx.currentTime * 1000) // drop beats queued ahead that never came
-}
-
-function stop() {
-  pause()
-  clickOnly.value = false
-  current.value = -1
-  notes = []
-  stray = 0
-}
-
-// Ustavi / Esc: stop and show the accuracy of this play-along. Beats still inside their window are left out.
-function finish() {
-  const now = bells ? bells.ctx.currentTime * 1000 : 0
-  const due = notes.filter((n) => n.off != null || n.ms + MISS_MS < now)
-  if (due.length) {
-    result.value = score(due, stray)
-    savePlay(result.value)
-    if (result.value.score === 100) confetti()
-  }
-  stop()
-}
-
-// Predvajaj: from the start, or after a pause / step continue one beat after the shown note
-function resume() {
-  current.value < 0 ? play() : play((current.value + 1) % piece.value.strikes.length)
-}
-
-// one strike back or forward (wraps around), sounding it so the step can be heard
-function step(d) {
-  if (playing.value) pause()
-  const n = piece.value.strikes.length
-  current.value = (Math.max(current.value, d > 0 ? -1 : 0) + d + n) % n
-  const s = piece.value.strikes[current.value]
-  audio().ring(freqs.value[s.bell], undefined, s.accent)
-}
-
-function continueFrom(i, t) {
-  next = i % piece.value.strikes.length
-  nextTime = t
-  currentT = t - 60 / rpm.value
-  waitAt = waiting.value = -1
-  queue = queue.filter((q) => !q.wait)
-}
-
-function ring(bell) {
-  audio().ring(freqs.value[bell])
-  flash.value = bell
-  setTimeout(() => flash.value === bell && (flash.value = -1), 150)
-}
-
-function onKey(e) {
-  if (e.code === 'Escape' && e.type === 'keydown') return showSettings.value || showStats.value ? (showSettings.value = showStats.value = false) : finish()
-  // 1–4 picks the bell to play along, 0 = all bells play
-  if (/^Digit[0-4]$/.test(e.code) && e.type === 'keydown' && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault()
-    return (practice.value = +e.code.at(-1) - 1)
-  }
-  // metronome (M) disabled for now
-  if (e.code === 'KeyP' && e.type === 'keydown' && !e.repeat && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault()
-    return (waitForMe.value = !waitForMe.value)
-  }
-  if (e.code === 'KeyS' && e.type === 'keydown' && !e.repeat && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault() // don't jump to an option in a focused dropdown
-    return playing.value ? pause() : resume()
-  }
-  if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && e.type === 'keydown' && !e.metaKey && !e.ctrlKey) {
-    e.preventDefault() // don't move a focused slider
-    return step(e.code === 'ArrowLeft' ? -1 : 1)
-  }
-  if (e.code !== 'Space') return
-  e.preventDefault() // keep space from scrolling / activating focused controls
-  if (e.type === 'keydown' && !e.repeat) tap()
-}
-
-// the player strikes their bell: space on desktop, the big circle on touch screens
-function tap() {
-  if (practice.value < 0) return
-  ring(practice.value)
-  // judged against what the player hears, so the device's audio output delay is taken off the tap time.
-  // Počakaj name isn't scored: there the melody waits for the player, so there is no fixed beat.
-  if (playing.value && !waitForMe.value) hit(notes, (bells.ctx.currentTime - (bells.ctx.outputLatency || 0)) * 1000) || stray++
-  // the first press on the opening bell counts as strike 1, the melody continues in tempo from it
-  if (!playing.value && current.value < 0 && practice.value === piece.value.strikes[0].bell) play(1)
-  else if (waitAt >= 0) {
-    // the player rang the awaited note: it counts as that strike. Within the grace period the melody
-    // keeps its original beat (nextTime still holds the due time), otherwise it resumes one beat after the press.
-    const now = bells.ctx.currentTime
-    current.value = waitAt
-    continueFrom(waitAt + 1, (now <= nextTime + GRACE ? nextTime : now) + 60 / rpm.value)
-  }
-}
-
-// turning waiting off or switching bells mid-pause would leave the melody stuck: just carry on
-watch([waitForMe, practice], () => waitAt >= 0 && continueFrom(waitAt, bells.ctx.currentTime + LOOKAHEAD))
-
-watch(pieceIdx, () => stop())
-// while stopped (step, stop, view or piece change) the strip still has to follow; while playing draw() does it
-watch([current, view, pieceIdx, playing], () => !playing.value && placeStrip(), { flush: 'post', immediate: true })
-watch(currentRow, (r) => r >= 0 && document.getElementById(`row-${r}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
-watch(currentLine, (l) => l >= 0 && document.getElementById(`mala-${l}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
-onMounted(() => {
-  window.addEventListener('keydown', onKey)
-  window.addEventListener('keyup', onKey)
-})
-onBeforeUnmount(() => {
-  stop()
-  window.removeEventListener('keydown', onKey)
-  window.removeEventListener('keyup', onKey)
-})
+const scoreStyle = computed(() => ({ '--host-opacity': 0.25 + (0.75 * hostVolume.value) / 100 }))
+const scoreProps = computed(() => ({
+  piece: piece.value,
+  current: current.value,
+  waiting: waiting.value,
+  practice: practice.value,
+}))
 </script>
 
 <template>
-  <!-- app bar across the whole page: settings left, title centred, statistics right -->
-  <header>
-    <Button class="icon-btn" icon="pi pi-cog" severity="secondary" outlined aria-label="Nastavitve" title="Nastavitve" @click="showSettings = true" />
-    <div class="brand">
-      <h1>Pritrkovalec</h1>
-      <Tag :value="`v${VERSION}`" severity="secondary" rounded />
-    </div>
-    <Button class="icon-btn" icon="pi pi-chart-bar" severity="secondary" outlined aria-label="Statistika igranja" title="Statistika" @click="showStats = true" />
-  </header>
+  <AppHeader @settings="showSettings = true" @stats="showStats = true" />
   <!-- desktop: settings and statistics are fixed side columns; tablet and phone: they slide in from the sides -->
   <div class="layout">
-    <aside class="panel panel-left" :class="{ open: showSettings }" aria-label="Nastavitve">
-      <div class="panel-head">
-        <h2>Nastavitve</h2>
-        <Button icon="pi pi-times" severity="secondary" text rounded aria-label="Zapri" @click="showSettings = false" />
-      </div>
-      <div class="drawer-fields">
+    <SettingsPanel
+      v-model:view="view"
+      v-model:tempo-idx="tempoIdx"
+      v-model:host-volume="hostVolume"
+      v-model:wait-for-me="waitForMe"
+      :open="showSettings"
+      @close="showSettings = false"
+    />
+    <main>
+      <section class="controls">
         <div class="field">
-          <label>Vrsta zapisa</label>
-          <Select v-model="view" :options="viewOptions" option-label="label" option-value="value" />
-        </div>
-        <div class="field">
-          <label>Tempo <strong>{{ rpm }}</strong> udarcev/min</label>
-          <Slider v-model="tempoIdx" :min="0" :max="TEMPOS.length - 1" :step="1" />
-          <div class="ticks">
-            <button v-for="(value, i) in TEMPOS" :key="value" :class="{ on: i === tempoIdx }" @click="tempoIdx = i">{{ value }}</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>Glasnost spremljave (x) <strong>{{ hostVolume }} %</strong></label>
-          <Slider v-model="hostVolume" :min="0" :max="100" :step="5" />
-        </div>
-        <label class="toggle"><ToggleSwitch v-model="waitForMe" /> Počakaj name (P)</label>
-        <!-- <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label> -->
-      </div>
-      <div class="panel-foot">
-        <ul class="shortcuts">
-          <li><Tag class="key" value="preslednica" /> udari izbrani zvon (na zvonu 1 začne melodijo)</li>
-          <li><Tag class="key" value="S" /> predvajaj / pavza</li>
-          <li><Tag class="key" value="←" /> <Tag class="key" value="→" /> nota nazaj / naprej</li>
-          <li><Tag class="key" value="1" />–<Tag class="key" value="4" /> izberi zvon, <Tag class="key" value="0" /> vsi zvonovi</li>
-          <li><Tag class="key" value="Esc" /> ustavi (na začetek)</li>
-          <li><Tag class="key" value="P" /> počakaj name</li>
-        </ul>
-        <footer class="footer">Copyright © 2026 David Ličen</footer>
-      </div>
-    </aside>
-  <main>
-
-
-
-    <section class="controls">
-      <div class="field">
-        <label>Melodija</label>
-        <Select v-model="pieceIdx" class="piece-select" :options="pieceOptions" option-label="label" option-value="value" />
-      </div>
-      <!-- <div class="field">
-        <label>Uglasitev</label>
-        <Select v-model="tuning" :options="tuningOptions" />
-      </div> -->
-    </section>
-
-    <section class="score" :class="[view, { practising: practice >= 0 }]" :style="{ '--host-opacity': 0.25 + (0.75 * hostVolume) / 100 }">
-      <div v-if="view === 'mala'" class="mala">
-        <p v-for="(line, l) in malaLines" :id="`mala-${l}`" :key="l">
-          <span v-for="(g, k) in groups(line)" :key="k" class="group">
-            <span
-              v-for="p in g"
-              :key="p.lead.i"
-              v-memo="[pieceIdx, practice, current === p.lead.i || current === p.host?.i, current > p.lead.i, waiting === p.lead.i || waiting === p.host?.i]"
-              class="pair"
-            >
-              <span
-                v-for="n in [p.lead, p.host].filter(Boolean)"
-                :key="n.i"
-                :class="[n === p.lead ? 'lead' : 'host', `b${n.bell}`, { now: n.i === current, waiting: n.i === waiting, past: n.i < current, mine: n.bell === practice }]"
-              ><i v-if="n.accent" class="accent">&gt;</i>{{ n.bell + 1 }}</span>
-            </span>
-          </span>
-        </p>
-      </div>
-      <div v-else-if="view === 'staff' || simple" class="staff">
-        <svg
-          v-for="(line, l) in malaLines"
-          :id="`mala-${l}`"
-          :key="l"
-          :viewBox="simple ? `0 ${ST.top - 30} ${staffWidth(line) + 20} ${3 * gap + 54}` : `0 0 ${staffWidth(line)} ${STAFF_H}`"
-          :width="staffWidth(line) + (simple ? 20 : 0)"
-          :height="simple ? 3 * gap + 54 : STAFF_H"
-        >
-          <!-- poenostavljen: bell numbers left of the lines, practice bell's line in yellow -->
-          <template v-if="simple">
-            <text v-for="b in 4" :key="b" class="num" x="8" :y="lineY(b - 1) + 5">{{ b }}</text>
-            <rect v-if="practice >= 0" class="mine-bg" x="20" :y="lineY(practice) - 7" :width="staffWidth(line) - 4" height="14" rx="7" />
-          </template>
-          <g :transform="simple ? 'translate(20 0)' : undefined">
-            <rect v-for="k in 4" :key="k" x="4" :y="ST.top + (k - 1) * gap - 0.8" :width="staffWidth(line) - 8" height="1.6" />
-            <text class="smufl" x="12" :y="ST.top + 1.5 * gap">{{ G.percClef }}</text>
-            <template v-if="l === 0">
-              <text class="smufl timesig" :style="simple && { fontSize: '54px' }" x="42" :y="ST.top + 0.75 * gap">{{ G.digit(beatsPerBar) }}</text>
-              <text class="smufl timesig" :style="simple && { fontSize: '54px' }" x="42" :y="ST.top + 2.25 * gap">{{ G.digit(4) }}</text>
-            </template>
-            <template v-for="(p, k) in line" :key="p.lead.i">
-              <!-- melody: quarter note, stem down on the left of the head -->
-              <g :class="noteClass(p.lead)">
-                <rect v-if="!simple && p.lead.bell === practice" class="mine-bg" :x="beatX(k) - 11" y="150" width="22" height="24" rx="4" />
-                <text v-if="p.lead.accent" class="smufl" :x="beatX(k) - 8" :y="ST.top - 2.6 * SP">{{ G.accent }}</text>
-                <text class="smufl" :x="beatX(k) - HEAD_W / 2" :y="lineY(p.lead.bell)">{{ G.head }}</text>
-                <template v-if="!simple">
-                  <rect :x="beatX(k) - HEAD_W / 2" :y="lineY(p.lead.bell) + 0.17 * SP" :width="STEM_W" :height="STEM_LEN - 0.17 * SP" />
-                  <text class="num" :x="beatX(k)" y="168">{{ p.lead.bell + 1 }}</text>
-                </template>
-              </g>
-              <!-- hosting bell: eighth rest on the beat, eighth note on the off-beat, stem up on the right -->
-              <g v-if="simple && p.host" class="host" :class="noteClass(p.host)">
-                <text class="smufl" :x="beatX(k) + ST.beat / 2 - HEAD_W / 2" :y="lineY(p.host.bell)">{{ G.headX }}</text>
-              </g>
-              <g v-else-if="p.host" class="host" :class="noteClass(p.host)">
-                <!-- eighth rest on the hosting bell's own line, aligned with the quarter note's beat; scaled down to read lighter -->
-                <text class="smufl" :transform="`translate(${beatX(k) - 3.3} ${lineY(p.host.bell)}) scale(0.55 0.7)`">{{ G.rest8 }}</text>
-                <rect v-if="p.host.bell === practice" class="mine-bg" :x="beatX(k) + ST.beat / 2 - 9" y="152" width="18" height="20" rx="4" />
-                <text class="smufl" :x="beatX(k) + ST.beat / 2 - HEAD_W / 2" :y="lineY(p.host.bell)">{{ G.head }}</text>
-                <rect
-                  :x="beatX(k) + ST.beat / 2 + HEAD_W / 2 - STEM_W"
-                  :y="lineY(p.host.bell) - STEM_LEN"
-                  :width="STEM_W"
-                  :height="STEM_LEN - 0.17 * SP"
-                />
-                <text class="smufl" :x="beatX(k) + ST.beat / 2 + HEAD_W / 2 - STEM_W" :y="lineY(p.host.bell) - STEM_LEN">{{ G.flag8Up }}</text>
-                <text class="num small" :x="beatX(k) + ST.beat / 2" y="166">{{ p.host.bell + 1 }}</text>
-                <rect :x="beatX(k) + ST.beat / 2 - 4" y="169" width="8" height="1.2" />
-              </g>
-            </template>
-            <rect v-for="m in line.length / beatsPerBar - 1" :key="m" :x="barX(m) - 1" :y="ST.top" width="1.9" :height="3 * gap" />
-            <template v-if="l === malaLines.length - 1">
-              <!-- end repeat: dots, thin and thick barline -->
-              <circle :cx="staffWidth(line) - 24" :cy="ST.top + 0.5 * gap" r="2.2" />
-              <circle :cx="staffWidth(line) - 24" :cy="ST.top + 2.5 * gap" r="2.2" />
-              <rect :x="staffWidth(line) - 18" :y="ST.top" width="1.9" :height="3 * gap" />
-              <rect :x="staffWidth(line) - 13" :y="ST.top" width="6" :height="3 * gap" />
-            </template>
-            <rect v-else :x="staffWidth(line) - 9" :y="ST.top" width="1.9" :height="3 * gap" />
-          </g>
-        </svg>
-      </div>
-      <div v-else-if="view === 'drum'" class="ticker">
-        <div class="bell-nums">
-          <button
-            v-for="b in 4"
-            :key="b"
-            :class="[`b${b - 1}`, { hit: flash === b - 1 }]"
-            :aria-label="`Udari zvon ${b}`"
-            @click="ring(b - 1)"
-          >
-            {{ b }}
-          </button>
-        </div>
-        <div class="ticker-window">
-          <div ref="strip" class="grid strip" :style="{ gridTemplateColumns: `repeat(${tape.length}, ${COL}px)` }">
-            <div
-              v-for="b in 4"
-              :key="b"
-              class="line"
-              :class="[`b${b - 1}`, { now: currentBell === b - 1, mine: practice === b - 1, hit: flash === b - 1 }]"
-              :style="{ gridRow: b }"
-            />
-            <div v-if="practice >= 0" class="lane" :style="{ gridRow: practice + 1 }" />
-            <!-- v-memo: a strike re-renders only the notes whose state changed, not all ~400 -->
-            <span
-              v-for="s in tape"
-              :key="s.j"
-              v-memo="[pieceIdx, practice, s.i === current, s.i === waiting, s.j < piece.strikes.length + current]"
-              class="note"
-              :class="[`b${s.bell}`, { x: s.label === 'x', now: s.i === current, waiting: s.i === waiting, past: s.j < piece.strikes.length + current, mine: s.bell === practice }]"
-              :style="{ gridColumn: s.j + 1, gridRow: s.bell + 1 }"
-            >
-              <i v-if="s.accent" class="accent">&gt;</i>{{ s.label }}
-            </span>
-            <span v-for="j in tapeBars" :key="`bar${j}`" class="bar-line" :style="{ gridColumn: j + 1 }" />
-          </div>
-          <div class="playhead" />
-        </div>
-      </div>
-      <template v-else>
-      <div v-for="(row, r) in rows" :id="`row-${r}`" :key="r" class="row" :class="{ active: r === currentRow }">
-        <div class="bell-nums">
-          <button
-            v-for="b in 4"
-            :key="b"
-            :class="[`b${b - 1}`, { hit: flash === b - 1 }]"
-            :aria-label="`Udari zvon ${b}`"
-            @click="ring(b - 1)"
-          >
-            {{ b }}
-          </button>
-        </div>
-        <!-- a shorter last row keeps the column width and ends after its last bar -->
-        <div class="grid" :style="{ gridTemplateColumns: `repeat(${row.length}, 1fr)`, width: `${(row.length / cols) * 100}%` }">
-          <div
-            v-for="b in 4"
-            :key="b"
-            class="line"
-            :class="[`b${b - 1}`, { now: r === currentRow && currentBell === b - 1, mine: practice === b - 1, hit: flash === b - 1 }]"
-            :style="{ gridRow: b }"
+          <label>Melodija</label>
+          <Select
+            v-model="pieceIdx"
+            class="piece-select"
+            :options="PIECE_OPTIONS"
+            option-label="label"
+            option-value="value"
           />
-          <div v-if="practice >= 0" class="lane" :style="{ gridRow: practice + 1 }" />
-          <div v-if="r === currentRow" class="col-hl" :style="{ gridColumn: (current % cols) + 1 }" />
-          <template v-for="s in row" :key="s.i">
-            <span
-              class="note"
-              :class="[`b${s.bell}`, { x: s.label === 'x', now: s.i === current, waiting: s.i === waiting, past: s.i < current, mine: s.bell === practice }]"
-              :style="{ gridColumn: s.col + 1, gridRow: s.bell + 1 }"
-            >
-              <i v-if="s.accent" class="accent">&gt;</i>{{ view === 'drum' ? s.label : '' }}
-            </span>
-            <span v-if="s.col && s.col % barLen === 0" class="bar-line" :style="{ gridColumn: s.col + 1 }" />
-            <template v-if="view === 'seq'">
-              <template v-for="b in 4" :key="b">
-                <span v-if="b - 1 !== s.bell" class="note pause" :class="`b${b - 1}`" :style="{ gridColumn: s.col + 1, gridRow: b }" />
-              </template>
-            </template>
-          </template>
         </div>
-      </div>
-      </template>
-    </section>
+      </section>
 
+      <!-- the view name is also a class here: the notation styles use it (.drum, .seq, .mala, .staff) -->
+      <section class="score" :class="[view, { practising: practice >= 0 }]" :style="scoreStyle">
+        <MalaScore v-if="view === 'mala'" v-bind="scoreProps" />
+        <StaffScore
+          v-else-if="view === 'staff' || view === 'simple'"
+          v-bind="scoreProps"
+          :simple="view === 'simple'"
+        />
+        <DrumTicker
+          v-else-if="view === 'drum'"
+          v-bind="scoreProps"
+          :flash="flash"
+          :playing="playing"
+          :position="position"
+          @ring="ring"
+        />
+        <GridScore v-else v-bind="scoreProps" :flash="flash" @ring="ring" />
+      </section>
 
-    <Dialog :visible="!!result" modal dismissable-mask header="Natančnost igranja" class="result-dialog" @update:visible="result = null">
-      <template v-if="result">
-        <p class="result-score">{{ result.score }}<small>/100</small></p>
-        <p class="result-verdict">{{ verdict(result.score) }}</p>
-        <ul class="result-counts">
-          <li v-for="(w, k) in WINDOWS" :key="w.label"><span>{{ w.label }} <small>±{{ w.ms }} ms</small></span><strong>{{ result.counts[k] }}</strong></li>
-          <li><span>Zgrešeno</span><strong>{{ result.miss }}</strong></li>
-          <li v-if="result.stray"><span>Odvečni udarci</span><strong>{{ result.stray }}</strong></li>
-        </ul>
-        <p v-if="result.counts.some(Boolean)" class="result-mean">
-          {{ Math.abs(result.mean) < 10 ? 'Lepo na udarcu' : `V povprečju ${Math.abs(result.mean)} ms ${result.mean < 0 ? 'prezgodaj' : 'prepozno'}` }}
-        </p>
-        <Button label="Zapri" class="result-close" @click="result = null" />
-      </template>
-    </Dialog>
+      <ResultDialog v-model:result="result" />
 
-    <!-- touch screens: player docked at the bottom, the circle strikes the chosen bell like space -->
-    <nav class="player" aria-label="Predvajalnik">
-      <SelectButton v-model="practice" :options="bellOptions" option-label="label" option-value="value" :allow-empty="false" class="player-bells">
-        <template #option="{ option }">
-          <!-- a bell in its own colour with its number inside -->
-          <svg v-if="option.value >= 0" class="bell-icon" :class="`b${option.value}`" viewBox="0 0 32 32" role="img" :aria-label="`Zvon ${option.label}`">
-            <path d="M14.5 2.5h3v2.2C22.6 5.5 25.5 9.6 25.5 15v5.5l3 4V26h-25v-1.5l3-4V15c0-5.4 2.9-9.5 8-10.3z" />
-            <circle cx="16" cy="28.3" r="2.6" />
-            <text x="16" y="19.5">{{ option.label }}</text>
-          </svg>
-          <span v-else>{{ option.label }}</span>
-        </template>
-      </SelectButton>
-      <div class="player-row">
-        <button class="pbtn" aria-label="Nota nazaj" @click="step(-1)">❮</button>
-        <button class="pbtn" :aria-label="playing ? 'Pavza' : 'Predvajaj'" @click="playing ? pause() : resume()">
-          <span v-if="playing" class="icon-pause" aria-hidden="true" /><span v-else aria-hidden="true">▶</span>
-        </button>
-        <button
-          class="tap"
-          :class="[`b${practice}`, { hit: practice >= 0 && flash === practice, waiting: waiting >= 0 }]"
-          :disabled="practice < 0"
-          :aria-label="practice < 0 ? 'Najprej izberi zvon' : `Udari zvon ${practice + 1}`"
-          @pointerdown.prevent="tap"
-        >
-          <template v-if="practice >= 0"><strong>{{ practice + 1 }}</strong><small>udari</small></template>
-          <small v-else>izberi<br />zvon</small>
-        </button>
-        <button class="pbtn" aria-label="Ustavi" :disabled="!playing && current < 0" @click="finish()">■</button>
-        <button class="pbtn" aria-label="Nota naprej" @click="step(1)">❯</button>
-      </div>
-    </nav>
-  </main>
-    <aside class="panel panel-right" :class="{ open: showStats }" aria-label="Statistika">
-      <div class="panel-head">
-        <h2>Statistika</h2>
-        <Button icon="pi pi-times" severity="secondary" text rounded aria-label="Zapri" @click="showStats = false" />
-      </div>
-      <p v-if="!stats.length" class="stats-empty">Še ni odigranih melodij. Izberi zvon, igraj zraven in na koncu pritisni Ustavi.</p>
-      <details v-for="s in stats" :key="s.name" class="stats-song">
-        <summary>
-          <span>{{ s.name }}<small>{{ s.list.length }}× igrano</small></span>
-          <strong :title="'Najboljši rezultat'">{{ s.best }}</strong>
-        </summary>
-        <ul>
-          <li v-for="p in s.list" :key="p.at">
-            <span>{{ fmtDate(p.at) }}<small>zvon {{ p.bell }} · {{ p.tempo }}/min</small></span>
-            <strong>{{ p.score }}</strong>
-          </li>
-        </ul>
-      </details>
-    </aside>
+      <PlayerBar
+        v-model:practice="practice"
+        :playing="playing"
+        :can-stop="playing || current >= 0"
+        :waiting="waiting >= 0"
+        :flash="flash"
+        @prev="step(-1)"
+        @toggle="toggle"
+        @tap="tap"
+        @stop="stopAndScore"
+        @next="step(1)"
+      />
+    </main>
+    <StatsPanel :open="showStats" :stats="stats" @close="showStats = false" />
   </div>
-  <div v-if="showSettings || showStats" class="backdrop" @click="showSettings = showStats = false" />
+  <div
+    v-if="showSettings || showStats"
+    class="backdrop"
+    @click="showSettings = showStats = false"
+  />
 </template>
 
 <style>
-:root {
-  --paper: #fbfaf6;
-  --ink: #1b1b1b;
-  --line: #c9c6bc;
-  --muted: #77736a;
-  --b0: #e4572e;
-  --b1: #2e86de;
-  --b2: #17a673;
-  --b3: #9b59b6;
-  --col-hl: rgba(27, 27, 27, 0.07);
-  --lane: #fff0b0;
-  --player-h: 169px; /* height of the docked player, panels and the page end above it */
-  color-scheme: light;
-}
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: 15px/1.4 Roboto, system-ui, sans-serif;
-}
-/* one layout for phone, tablet and desktop: app bar, melody picker, score, player docked at the bottom */
-/* main column: white, no boxes, full height between the app bar and the bottom */
+/* one layout for phone, tablet and desktop: app bar, melody picker, score, player docked at the bottom.
+   The main column is white, full height between the app bar and the bottom. */
 main {
   max-width: 1240px;
-  min-height: calc(100dvh - 61px - env(safe-area-inset-top)); /* exactly the screen below the app bar */
+  min-height: calc(
+    100dvh - 61px - env(safe-area-inset-top)
+  ); /* exactly the screen below the app bar */
   background: #fff;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   padding: 8px 8px calc(var(--player-h) + 16px); /* room for the docked player */
 }
-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: grid;
-  grid-template-columns: 44px 1fr 44px; /* equal sides keep the title truly centred */
-  align-items: center;
-  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
-  background: rgba(251, 250, 246, 0.94); /* --paper */
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
-}
-.brand {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-}
-.icon-btn {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-}
-/* side panels: off-canvas below 1200px, always-open columns above */
-.panel {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  z-index: 30;
-  width: min(88vw, 360px);
-  overflow-y: auto;
-  padding: 0 20px 24px;
-  background: #fff;
-  box-shadow: 0 0 24px rgba(0, 0, 0, 0.15);
-  visibility: hidden; /* closed panels stay out of the tab order */
-  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s 0.3s;
-}
-.panel-left {
-  left: 0;
-  transform: translateX(-100%);
-}
-.panel-right {
-  right: 0;
-  transform: translateX(100%);
-}
-.panel.open {
-  visibility: visible;
-  transform: none;
-  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-}
-.panel-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  background: inherit;
-}
-.panel-head h2 {
-  margin: 0;
-  text-align: left;
-}
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 25;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.55);
 }
 @media (min-width: 1200px) {
   .layout {
@@ -747,703 +155,40 @@ header {
     grid-template-columns: 300px minmax(0, 1fr) 340px;
     align-items: start;
   }
-  .panel {
-    position: sticky;
-    top: 61px; /* below the app bar */
-    z-index: auto;
-    width: auto;
-    height: calc(100dvh - 61px); /* full height; the border runs on behind the docked player */
-    padding-bottom: calc(var(--player-h) + 16px); /* keeps the panel's content above the player */
-    visibility: visible;
-    transform: none;
-    transition: none;
-    box-shadow: none;
-    background: var(--paper);
-  }
-  .panel-left {
-    grid-column: 1;
-    border-right: 1px solid var(--line);
-  }
-  .panel-right {
-    grid-column: 3;
-    border-left: 1px solid var(--line);
-  }
   main {
     grid-column: 2;
     width: 100%;
   }
-  /* panels are always open here: no open buttons, close buttons or backdrop */
-  .icon-btn {
-    visibility: hidden;
-  }
-  .panel-head .p-button,
   .backdrop {
     display: none;
   }
 }
-.drawer-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  padding-top: 8px;
-}
-/* statistics: songs with their best score, each expands into its plays */
-.stats-empty {
-  color: var(--muted);
-}
-.stats-song {
-  border-bottom: 1px solid var(--line);
-}
-.stats-song summary,
-.stats-song li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-.stats-song summary {
-  padding: 12px 0;
-  cursor: pointer;
-}
-.stats-song summary::-webkit-details-marker {
-  display: none;
-}
-.stats-song summary::before {
-  content: '▸';
-  color: var(--muted);
-  transition: rotate 0.15s;
-}
-.stats-song[open] summary::before {
-  rotate: 90deg;
-}
-.stats-song summary span {
-  flex: 1;
-}
-.stats-song small {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-}
-.stats-song summary strong {
-  font-size: 22px;
-  font-weight: 700;
-}
-.stats-song ul {
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0 0 0 22px;
-}
-.stats-song li {
-  padding: 6px 0;
-  border-top: 1px dashed var(--line);
-}
-h1 {
-  font-size: 20px;
-  font-weight: 500;
-  margin: 0;
-}
-.b0 { --c: var(--b0); }
-.b1 { --c: var(--b1); }
-.b2 { --c: var(--b2); }
-.b3 { --c: var(--b3); }
-
-/* melody picker: label centred above the select, part of the plain white main column */
+/* melody picker: label centred above the select; it doubles as the score's title */
 .controls {
   padding: 12px 16px;
 }
 .controls .field > label {
   text-align: center;
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-.field > label {
-  font-size: 13px;
-  color: var(--muted);
-}
-.field > label strong {
-  color: var(--ink);
-}
-.field .p-slider {
-  margin: 8px 6px 0;
-}
-.ticks {
-  display: flex;
-  justify-content: space-between;
-}
-.ticks button {
-  font-size: 12px;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 2px;
-}
-.ticks button.on {
-  color: var(--ink);
+.piece-select .p-select-label {
   font-weight: 700;
 }
-.bell-icon {
-  display: block;
-  width: 30px;
-  height: 30px;
-  fill: var(--c);
+/* the melody picker is the only PrimeVue control on white: give it light colours by hand */
+.controls .p-select {
+  background: #fff;
+  border-color: #d4d4d8;
 }
-.bell-icon text {
-  fill: #fff;
-  font: 700 12px Roboto, sans-serif;
-  text-anchor: middle;
+.controls .p-select-label,
+.controls .p-select-dropdown {
+  color: var(--ink);
 }
-/* pause icon as two bars: the ❚❚ glyph renders as a solid block in some fonts */
-.icon-pause {
-  display: inline-block;
-  width: 10px;
-  height: 12px;
-  border-left: 3.5px solid currentColor;
-  border-right: 3.5px solid currentColor;
-}
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-}
-
 /* the score fills the screen between the melody picker and the player, content centred */
 .score {
-  flex: 1; /* takes the space left between the melody picker and the player */
+  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
   overflow-x: auto;
   padding: 8px 12px;
-}
-h2 {
-  font-size: 18px;
-  text-align: center;
-  margin: 4px 0 8px;
-}
-.row {
-  display: grid;
-  grid-template-columns: 28px minmax(948px, 1fr);
-  align-items: center;
-  padding: 30px 0;
-  border-radius: 6px;
-  transition: background 0.2s;
-}
-.bell-nums {
-  display: grid;
-  grid-template-rows: repeat(4, 23px);
-  align-self: start;
-}
-.bell-nums button {
-  place-self: center;
-  width: 18px;
-  height: 18px;
-  font: 700 11px/1 Roboto, sans-serif;
-  border: 0;
-  border-radius: 50%;
-  background: var(--c);
-  color: #fff;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.08s, box-shadow 0.08s;
-}
-.bell-nums button.hit {
-  transform: scale(1.25);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 35%, transparent);
-}
-/* Bobnarske note: plain printed bell numbers like the book, coloured only while ringing */
-.drum .bell-nums button {
-  font: 13px/1 Roboto, sans-serif;
-  background: none;
-  color: var(--ink);
-  border-radius: 3px;
-}
-.drum .bell-nums button.hit {
-  background: var(--c);
-  color: #fff;
-  transform: none;
-  box-shadow: none;
-}
-.grid {
-  display: grid;
-  grid-template-columns: repeat(48, 1fr);
-  grid-template-rows: repeat(4, 23px);
-  position: relative;
-}
-.line {
-  grid-column: 1 / -1;
-  align-self: center;
-  height: 1px;
-  background: var(--line);
-  transition: background 0.1s, height 0.1s;
-}
-/* Sekvenca: each bell's line in its own colour */
-:where(.seq) .line {
-  background: var(--c);
-  opacity: 0.45;
-}
-.line.mine {
-  background: var(--c);
-  opacity: 0.5;
-}
-.line.now,
-.line.hit {
-  height: 3px;
-  background: var(--c);
-  opacity: 1;
-}
-/* Bobnarske note: a table like the printed score, each bell in its own lane between lines */
-:where(.drum) .grid {
-  border: 1px solid var(--ink);
-}
-:where(.drum) .line {
-  align-self: stretch;
-  height: auto;
-  background: none;
-  border-bottom: 1px solid var(--ink);
-}
-:where(.drum) .line:nth-child(4) {
-  border-bottom: 0;
-}
-:where(.drum) .line.now,
-:where(.drum) .line.hit {
-  height: auto; /* .line.now's 3px would shrink the lane and double its border */
-  background: color-mix(in srgb, var(--c) 18%, transparent);
-}
-/* the practice bell's line; replaces the whole-row tint so only that line is yellow */
-.lane {
-  grid-column: 1 / -1;
-  background: var(--lane);
-  border-radius: 11px;
-}
-.col-hl {
-  grid-row: 1 / -1;
-  background: var(--col-hl);
-  border-radius: 3px;
-  margin: -4px 0;
-}
-.note {
-  position: relative;
-  justify-self: center;
-  align-self: center;
-  width: 14px;
-  height: 14px;
-  background: var(--c);
-  color: #fff;
-  border-radius: 50%;
-  z-index: 1;
-  transition: transform 0.08s, background 0.08s;
-}
-.note.x {
-  opacity: var(--host-opacity, 1);
-}
-/* Sekvenca: hosting strike as a diamond; `rotate` composes with the .now/.waiting `transform: scale` */
-:where(.seq) .note.x {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  rotate: 45deg;
-}
-/* Bobnarske note: numbered squares and x like the PDF; :where keeps specificity low so .now/.waiting still win */
-:where(.drum) .note {
-  background: var(--ink);
-  border-radius: 2px;
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
-  font: 700 13px Roboto, sans-serif;
-}
-/* the x needs a bit more size to read as clearly as the numbered squares */
-:where(.drum) .note.x {
-  background: none;
-  color: var(--ink);
-  font-size: 17px;
-}
-.note.pause {
-  background: var(--paper);
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 45%, transparent);
-  z-index: 0;
-}
-.bar-line {
-  grid-row: 1 / 5;
-  justify-self: start;
-  width: 0;
-  border-left: 1px solid var(--muted);
-  margin: -4px 0 -4px -0.5px;
-}
-.drum .bar-line {
-  border-color: var(--ink);
-  margin: 0 0 0 -0.5px;
-}
-.drum .col-hl {
-  margin: 0; /* stay inside the table border */
-  border-radius: 0;
-}
-/* Bobnarske note as a moving strip: notes slide left under a fixed playhead at 25 % */
-.ticker {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-}
-.ticker .bell-nums {
-  padding-top: 21px; /* line up with the strip: window padding + table border */
-}
-.ticker-window {
-  position: relative;
-  height: 134px; /* 4 lanes + room for accents above */
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
-}
-.ticker .strip {
-  position: absolute;
-  top: 20px;
-  left: 25%;
-  width: max-content;
-  will-change: transform;
-}
-.playhead {
-  position: absolute;
-  top: 12px;
-  height: 112px;
-  left: 25%;
-  width: 30px; /* = COL */
-  translate: -50% 0;
-  border-radius: 4px;
-  background: var(--col-hl);
-  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 25%, transparent);
-  pointer-events: none;
-}
-/* Po Malavašiču: big handwritten-style digits, hosting bell as superscript */
-div.mala { /* div: the score section also carries the view name as a class */
-  display: grid;
-  grid-template-columns: minmax(0, max-content); /* as wide as the longest line, but never wider than the screen */
-  justify-content: center;
-  padding: 8px 0 16px;
-}
-/* a line breaks only between groups (bars), never inside one */
-.mala p {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.6em;
-  margin: 0 0 0.35em;
-  font: 500 clamp(32px, 9vw, 44px)/1.5 Georgia, 'Times New Roman', serif; /* the one place that keeps the handwritten serif */
-}
-.mala .group,
-.mala .pair {
-  display: inline-flex;
-  gap: 0.2em;
-  align-items: flex-start;
-}
-.mala .group {
-  gap: 0.3em;
-}
-.mala .lead,
-.mala .host {
-  position: relative;
-  display: inline-block;
-  padding: 0 2px;
-  border-radius: 6px;
-  transition: color 0.08s, background 0.08s;
-}
-.mala .host {
-  font-size: 0.5em;
-  line-height: 1.6;
-  opacity: var(--host-opacity, 1);
-}
-.mala .past {
-  color: var(--muted);
-}
-.mala .mine {
-  background: var(--lane);
-}
-/* current strike: white digit on the bell's colour, like the squares in Bobnarske note */
-.mala .now,
-.mala .waiting {
-  background: var(--c);
-  color: #fff;
-  opacity: 1;
-}
-.mala .waiting {
-  animation: pulse-bg 0.8s ease-in-out infinite alternate;
-}
-@keyframes pulse-bg {
-  to {
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 30%, transparent);
-  }
-}
-.mala .accent {
-  top: -0.35em;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: 0.4em;
-}
-/* Notni in številčni zapis */
-div.staff {
-  display: grid;
-  justify-content: center;
-  gap: 4px;
-  padding-bottom: 12px;
-}
-.staff svg {
-  max-width: 100%;
-  height: auto;
-  fill: var(--ink);
-  overflow: visible;
-}
-.staff g {
-  color: var(--ink);
-  fill: currentColor;
-}
-.staff .smufl {
-  font: 48px/1 Bravura; /* SMuFL: em = 4 staff spaces */
-}
-.staff .smufl.timesig {
-  font-size: 30px; /* digits are 2 sp tall; scaled down so both fit the 4-line staff */
-}
-.staff .num {
-  font-family: Roboto, sans-serif;
-  text-anchor: middle;
-}
-.staff .num {
-  font-size: 20px;
-}
-.staff .num.small {
-  font-size: 13px;
-}
-.staff .mine-bg {
-  fill: var(--lane);
-}
-.staff .host {
-  opacity: var(--host-opacity, 1);
-}
-.staff .past {
-  color: var(--muted);
-}
-.staff .now,
-.staff .waiting {
-  color: var(--c);
-  opacity: 1;
-}
-.staff .waiting {
-  animation: blink 0.8s ease-in-out infinite alternate;
-}
-@keyframes blink {
-  to {
-    opacity: 0.35;
-  }
-}
-.note.waiting {
-  background: var(--c);
-  animation: pulse 0.8s ease-in-out infinite alternate;
-}
-@keyframes pulse {
-  to {
-    transform: scale(1.35);
-    box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 30%, transparent);
-  }
-}
-.note.past {
-  opacity: 0.55;
-}
-.note.mine {
-  outline: 2px solid var(--c);
-  outline-offset: 1px;
-}
-.note.now {
-  background: var(--c);
-  color: #fff;
-  opacity: 1;
-  transform: scale(1.35);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 35%, transparent);
-}
-.accent {
-  position: absolute;
-  top: -16px;
-  font: 700 13px Roboto, sans-serif;
-  color: var(--ink);
-}
-/* the melody picker doubles as the score's title */
-.piece-select .p-select-label {
-  font-weight: 700;
-}
-/* bottom of the left panel: keyboard shortcuts and copyright */
-.panel-left {
-  display: flex;
-  flex-direction: column;
-}
-.panel-foot {
-  margin-top: auto;
-  padding-top: 24px;
-}
-.footer {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--muted);
-}
-.shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
-  color: var(--muted);
-}
-.shortcuts .key {
-  padding: 1px 6px;
-  font: 500 11px/1.4 Roboto, sans-serif;
-  border: 1px solid var(--line);
-  border-bottom-width: 2px; /* reads as a key cap */
-  background: #fff;
-  color: var(--ink);
-}
-/* accuracy dialog after Ustavi */
-.result-dialog {
-  width: min(92vw, 380px);
-}
-.result-score {
-  margin: 0;
-  text-align: center;
-  font: 700 64px/1 Roboto, sans-serif;
-}
-.result-score small {
-  font-size: 20px;
-  color: var(--muted);
-}
-.result-verdict {
-  margin: 4px 0 16px;
-  text-align: center;
-  font-size: 18px;
-}
-.result-counts {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.result-counts li {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--line);
-}
-.result-counts small,
-.result-mean {
-  color: var(--muted);
-}
-.result-mean {
-  text-align: center;
-}
-.result-close {
-  width: 100%;
-}
-/* player docked at the bottom; the circle strikes the chosen bell like space */
-.player {
-  position: fixed;
-  inset: auto 0 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
-  background: rgba(255, 255, 255, 0.96);
-  border-top: 1px solid var(--line);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
-  touch-action: manipulation; /* no double-tap zoom while tapping along */
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-.player-bells .p-togglebutton {
-  padding: 4px 12px;
-  font-size: 13px;
-  background: transparent; /* no grey bar behind the bells */
-  border-color: transparent;
-}
-.player-bells .p-togglebutton.p-togglebutton-checked {
-  background: transparent;
-  border-color: transparent;
-}
-/* on white the chosen bell needs an outline to stand out */
-.player-bells .p-togglebutton-checked .p-togglebutton-content {
-  box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-.player-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  width: 100%;
-  max-width: 420px;
-}
-.pbtn {
-  width: 48px;
-  height: 48px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: #fff;
-  color: var(--ink);
-  font-size: 16px;
-  display: grid;
-  place-items: center;
-}
-.pbtn:disabled {
-  opacity: 0.4;
-}
-.tap {
-  width: 96px;
-  height: 96px;
-  flex: none;
-  border: 0;
-  border-radius: 50%;
-  background: var(--c, var(--line));
-  color: #fff;
-  display: grid;
-  place-content: center;
-  line-height: 1;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--c, #000) 35%, transparent);
-  transition: transform 0.06s, box-shadow 0.06s;
-}
-.tap strong {
-  font: 700 36px Roboto, sans-serif;
-}
-.tap small {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.85;
-}
-.tap:disabled {
-  color: var(--muted);
-  box-shadow: none;
-}
-.tap.hit {
-  transform: scale(0.92);
-  box-shadow: 0 0 0 10px color-mix(in srgb, var(--c) 30%, transparent);
-}
-.tap.waiting {
-  animation: pulse-bg 0.8s ease-in-out infinite alternate;
-}
-/* keyboard shortcuts are only useful with a keyboard */
-@media (pointer: coarse) {
-  .shortcuts {
-    display: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
 }
 </style>
