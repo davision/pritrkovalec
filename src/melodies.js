@@ -30,9 +30,9 @@ const mirror = (bell) => 3 - bell // bell b ↔ 5 - b (1↔4, 2↔3)
 const MERCINOVA = [0, 1, 2]
 const STIRKA = [0, 2, 1, 2]
 // prettier-ignore
-const PO_PET_NAVADNA = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 1, 3, 1, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3]
+const PO_PET_NAVADNA = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3]
 const PO_PET = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2]
-// 4 bars hosted by bell 4, 4 bars by bell 3; then the whole figure mirrored so bell 1 hosts first (4 2 2 2 …)
+// 4 bars hosted by bell 4, 4 bars by bell 3; then the whole figure mirrored so bell 1 hosts first (4 2 2 2| …)
 const PO_PET_HOSTS = PO_PET_NAVADNA.map((_, i) => (i < 16 ? 3 : 2))
 const TRI_DVA_ENA = [ 0, 0, 0, 2, 0, 0, 2, 0, 2 ]
 
@@ -50,10 +50,12 @@ export const pieces = [
   },
   {
     name: 'Po pet naokoli',
-    strikes: turn(PO_PET, { reps: 1})
+    strikes: turn(PO_PET, { reps: 1 }),
+    group: 4, // Po Malavašiču wraps after every 4 notes (0 2 2 2 | …)
   },
     {
     name: 'Tri dva ena',
-    strikes: turn(TRI_DVA_ENA, { reps: 1})
+    strikes: turn(TRI_DVA_ENA, { reps: 1 }),
+    group: 3, // 3 + 3 + 3
   }
 ]

@@ -63,6 +63,9 @@ const malaLines = computed(() => {
   }
   return lines
 })
+// Po Malavašiču wraps only between these groups (a bar, or a piece's own `group` when its bar is long)
+const groupLen = computed(() => piece.value.group ?? beatsPerBar.value)
+const groups = (line) => Array.from({ length: Math.ceil(line.length / groupLen.value) }, (_, g) => line.slice(g * groupLen.value, (g + 1) * groupLen.value))
 // Notni in številčni zapis: percussion staff, one line per bell (bell 1 at the bottom).
 // Melody = quarter note, stem down; hosting bell = eighth on the off-beat, stem up. Numbers underneath.
 // Drawn with SMuFL glyphs from the Bravura font (font-size = 4 staff spaces); offsets below are in staff spaces (sp) from Bravura's metadata.
@@ -82,6 +85,25 @@ const staffWidth = (line) => barX(line.length / beatsPerBar.value) + 24 // room 
 const noteClass = (n) => [`b${n.bell}`, { now: n.i === current.value, waiting: n.i === waiting.value, past: n.i < current.value, mine: n.bell === practice.value }]
 const currentLine = computed(() => malaLines.value.findIndex((l) => l.some((p) => p.lead.i === current.value || p.host?.i === current.value)))
 const currentBell = computed(() => piece.value.strikes[current.value]?.bell ?? -1)
+
+// Bobnarske note: one endless strip sliding under a fixed playhead. The piece is drawn 3× so the
+// playhead (on the middle copy) always has notes on both sides; wrapping jumps one copy back, invisibly.
+const COL = 30 // px per strike
+const COPIES = 3 // shortcut: assumes one copy is wider than the screen (≥ 48 strikes); add copies for shorter pieces
+const strip = ref(null)
+const tape = computed(() => {
+  const s = piece.value.strikes
+  return Array.from({ length: COPIES }, (_, c) => s.map((x, i) => ({ ...x, i, j: c * s.length + i }))).flat()
+})
+let currentT = 0 // audio time the current strike sounded, for smooth motion between strikes
+
+// set imperatively every frame: binding it through Vue would re-render the whole score 60× a second
+function placeStrip() {
+  if (!strip.value) return
+  const frac = playing.value ? Math.min(1, Math.max(0, ((bells.ctx.currentTime - currentT) * rpm.value) / 60)) : 0
+  const pos = piece.value.strikes.length + current.value + frac
+  strip.value.style.transform = `translateX(${-(pos + 0.5) * COL}px)`
+}
 
 // Web Audio lookahead scheduler: audio is timed by the AudioContext, visuals follow via rAF.
 let bells, timer, raf, next, nextTime, queue
@@ -116,8 +138,9 @@ function schedule() {
 function draw() {
   while (queue.length && queue[0].t <= bells.ctx.currentTime) {
     const q = queue.shift()
-    q.wait ? (waiting.value = q.i) : (current.value = q.i)
+    q.wait ? (waiting.value = q.i) : ((current.value = q.i), (currentT = q.t))
   }
+  placeStrip()
   raf = requestAnimationFrame(draw)
 }
 
@@ -129,6 +152,7 @@ function play(from = 0) {
   queue = []
   waitAt = waiting.value = -1
   current.value = from - 1
+  currentT = nextTime - 60 / rpm.value // glide from the shown note into the first one
   timer = setInterval(schedule, 25)
   raf = requestAnimationFrame(draw)
   playing.value = true
@@ -165,6 +189,7 @@ function step(d) {
 function continueFrom(i, t) {
   next = i % piece.value.strikes.length
   nextTime = t
+  currentT = t - 60 / rpm.value
   waitAt = waiting.value = -1
   queue = queue.filter((q) => !q.wait)
 }
@@ -182,10 +207,10 @@ function onKey(e) {
     e.preventDefault()
     return (practice.value = +e.code.at(-1) - 1)
   }
-  if ((e.code === 'KeyP' || e.code === 'KeyM') && e.type === 'keydown' && !e.repeat && !e.metaKey && !e.ctrlKey) {
+  // metronome (M) disabled for now
+  if (e.code === 'KeyP' && e.type === 'keydown' && !e.repeat && !e.metaKey && !e.ctrlKey) {
     e.preventDefault()
-    const toggle = e.code === 'KeyP' ? waitForMe : metronome
-    return (toggle.value = !toggle.value)
+    return (waitForMe.value = !waitForMe.value)
   }
   if (e.code === 'KeyS' && e.type === 'keydown' && !e.repeat && !e.metaKey && !e.ctrlKey) {
     e.preventDefault() // don't jump to an option in a focused dropdown
@@ -197,7 +222,12 @@ function onKey(e) {
   }
   if (e.code !== 'Space') return
   e.preventDefault() // keep space from scrolling / activating focused controls
-  if (e.type !== 'keydown' || e.repeat || practice.value < 0) return
+  if (e.type === 'keydown' && !e.repeat) tap()
+}
+
+// the player strikes their bell: space on desktop, the big circle on touch screens
+function tap() {
+  if (practice.value < 0) return
   ring(practice.value)
   // the first press on the opening bell counts as strike 1, the melody continues in tempo from it
   if (!playing.value && current.value < 0 && practice.value === piece.value.strikes[0].bell) play(1)
@@ -214,6 +244,8 @@ function onKey(e) {
 watch([waitForMe, practice], () => waitAt >= 0 && continueFrom(waitAt, bells.ctx.currentTime + LOOKAHEAD))
 
 watch(pieceIdx, stop)
+// while stopped (step, stop, view or piece change) the strip still has to follow; while playing draw() does it
+watch([current, view, pieceIdx, playing], () => !playing.value && placeStrip(), { flush: 'post', immediate: true })
 watch(currentRow, (r) => r >= 0 && document.getElementById(`row-${r}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
 watch(currentLine, (l) => l >= 0 && document.getElementById(`mala-${l}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
 onMounted(() => {
@@ -246,7 +278,7 @@ onBeforeUnmount(() => {
         <label>Vrsta zapisa</label>
         <Select v-model="view" :options="viewOptions" option-label="label" option-value="value" />
       </div>
-      <div class="field">
+      <div class="field bell-field">
         <label>Igram zvon (preslednica)</label>
         <SelectButton v-model="practice" :options="bellOptions" option-label="label" option-value="value" :allow-empty="false">
           <template #option="{ option }">
@@ -269,7 +301,7 @@ onBeforeUnmount(() => {
 
       <div class="toggles">
         <label class="toggle"><ToggleSwitch v-model="waitForMe" /> Počakaj name (P)</label>
-        <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label>
+        <!-- <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label> -->
       </div>
       <div class="actions">
         <Button label="❮ Nazaj" severity="secondary" outlined @click="step(-1)" />
@@ -279,7 +311,7 @@ onBeforeUnmount(() => {
         </Button>
         <Button label="Naprej ❯" severity="secondary" outlined @click="step(1)" />
         <Button label="■ Ustavi" severity="secondary" outlined :disabled="!playing && current < 0" @click="stop()" />
-        <Button label="♩ Samo metronom" severity="secondary" outlined :disabled="playing" @click="(clickOnly = true), play()" />
+        <!-- <Button label="♩ Samo metronom" severity="secondary" outlined :disabled="playing" @click="(clickOnly = true), play()" /> -->
       </div>
     </section>
 
@@ -287,12 +319,14 @@ onBeforeUnmount(() => {
       <h2>{{ piece.name }}</h2>
       <div v-if="view === 'mala'" class="mala">
         <p v-for="(line, l) in malaLines" :id="`mala-${l}`" :key="l">
-          <span v-for="p in line" :key="p.lead.i" class="pair">
-            <span
-              v-for="n in [p.lead, p.host].filter(Boolean)"
-              :key="n.i"
-              :class="[n === p.lead ? 'lead' : 'host', `b${n.bell}`, { now: n.i === current, waiting: n.i === waiting, past: n.i < current, mine: n.bell === practice }]"
-            ><i v-if="n.accent" class="accent">&gt;</i>{{ n.bell + 1 }}</span>
+          <span v-for="(g, k) in groups(line)" :key="k" class="group">
+            <span v-for="p in g" :key="p.lead.i" class="pair">
+              <span
+                v-for="n in [p.lead, p.host].filter(Boolean)"
+                :key="n.i"
+                :class="[n === p.lead ? 'lead' : 'host', `b${n.bell}`, { now: n.i === current, waiting: n.i === waiting, past: n.i < current, mine: n.bell === practice }]"
+              ><i v-if="n.accent" class="accent">&gt;</i>{{ n.bell + 1 }}</span>
+            </span>
           </span>
         </p>
       </div>
@@ -360,6 +394,42 @@ onBeforeUnmount(() => {
           </g>
         </svg>
       </div>
+      <div v-else-if="view === 'drum'" class="ticker">
+        <div class="bell-nums">
+          <button
+            v-for="b in 4"
+            :key="b"
+            :class="[`b${b - 1}`, { hit: flash === b - 1 }]"
+            :aria-label="`Udari zvon ${b}`"
+            @click="ring(b - 1)"
+          >
+            {{ b }}
+          </button>
+        </div>
+        <div class="ticker-window">
+          <div ref="strip" class="grid strip" :style="{ gridTemplateColumns: `repeat(${tape.length}, ${COL}px)` }">
+            <div
+              v-for="b in 4"
+              :key="b"
+              class="line"
+              :class="[`b${b - 1}`, { now: currentBell === b - 1, mine: practice === b - 1, hit: flash === b - 1 }]"
+              :style="{ gridRow: b }"
+            />
+            <div v-if="practice >= 0" class="lane" :style="{ gridRow: practice + 1 }" />
+            <template v-for="s in tape" :key="s.j">
+              <span
+                class="note"
+                :class="[`b${s.bell}`, { x: s.label === 'x', now: s.i === current, waiting: s.i === waiting, past: s.j < piece.strikes.length + current, mine: s.bell === practice }]"
+                :style="{ gridColumn: s.j + 1, gridRow: s.bell + 1 }"
+              >
+                <i v-if="s.accent" class="accent">&gt;</i>{{ s.label }}
+              </span>
+              <span v-if="s.j && s.j % barLen === 0" class="bar-line" :style="{ gridColumn: s.j + 1 }" />
+            </template>
+          </div>
+          <div class="playhead" />
+        </div>
+      </div>
       <template v-else>
       <div v-for="(row, r) in rows" :id="`row-${r}`" :key="r" class="row" :class="{ active: r === currentRow }">
         <div class="bell-nums">
@@ -412,8 +482,34 @@ onBeforeUnmount(() => {
       <li><kbd>1</kbd>–<kbd>4</kbd> izberi zvon, <kbd>0</kbd> vsi zvonovi</li>
       <li><kbd>Esc</kbd> ustavi (na začetek)</li>
       <li><kbd>P</kbd> počakaj name</li>
-      <li><kbd>M</kbd> metronom</li>
     </ul>
+
+    <!-- touch screens: player docked at the bottom, the circle strikes the chosen bell like space -->
+    <nav class="player" aria-label="Predvajalnik">
+      <SelectButton v-model="practice" :options="bellOptions" option-label="label" option-value="value" :allow-empty="false" class="player-bells">
+        <template #option="{ option }">
+          <span v-if="option.value >= 0" class="dot" :class="`b${option.value}`" />{{ option.label }}
+        </template>
+      </SelectButton>
+      <div class="player-row">
+        <button class="pbtn" aria-label="Nota nazaj" @click="step(-1)">❮</button>
+        <button class="pbtn" :aria-label="playing ? 'Pavza' : 'Predvajaj'" @click="playing ? pause() : resume()">
+          <span v-if="playing" class="icon-pause" aria-hidden="true" /><span v-else aria-hidden="true">▶</span>
+        </button>
+        <button
+          class="tap"
+          :class="[`b${practice}`, { hit: practice >= 0 && flash === practice, waiting: waiting >= 0 }]"
+          :disabled="practice < 0"
+          :aria-label="practice < 0 ? 'Najprej izberi zvon' : `Udari zvon ${practice + 1}`"
+          @pointerdown.prevent="tap"
+        >
+          <template v-if="practice >= 0"><strong>{{ practice + 1 }}</strong><small>udari</small></template>
+          <small v-else>izberi<br />zvon</small>
+        </button>
+        <button class="pbtn" aria-label="Ustavi" :disabled="!playing && current < 0" @click="stop()">■</button>
+        <button class="pbtn" aria-label="Nota naprej" @click="step(1)">❯</button>
+      </div>
+    </nav>
     <footer class="footer">Copyright © 2026 David Ličen</footer>
   </main>
 </template>
@@ -728,22 +824,63 @@ h2 {
   margin: 0; /* stay inside the table border */
   border-radius: 0;
 }
+/* Bobnarske note as a moving strip: notes slide left under a fixed playhead at 25 % */
+.ticker {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+.ticker .bell-nums {
+  padding-top: 21px; /* line up with the strip: window padding + table border */
+}
+.ticker-window {
+  position: relative;
+  height: 134px; /* 4 lanes + room for accents above */
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 4%, #000 92%, transparent);
+}
+.ticker .strip {
+  position: absolute;
+  top: 20px;
+  left: 25%;
+  width: max-content;
+  will-change: transform;
+}
+.playhead {
+  position: absolute;
+  top: 12px;
+  height: 112px;
+  left: 25%;
+  width: 30px; /* = COL */
+  translate: -50% 0;
+  border-radius: 4px;
+  background: var(--col-hl);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 25%, transparent);
+  pointer-events: none;
+}
 /* Po Malavašiču: big handwritten-style digits, hosting bell as superscript */
 .mala {
   display: grid;
+  grid-template-columns: minmax(0, max-content); /* as wide as the longest line, but never wider than the screen */
   justify-content: center;
   padding: 8px 0 16px;
 }
+/* a line breaks only between groups (bars), never inside one */
 .mala p {
   display: flex;
-  gap: 0.3em;
+  flex-wrap: wrap;
+  gap: 0 0.6em;
   margin: 0 0 0.35em;
   font: 500 44px/1.5 Georgia, 'Times New Roman', serif;
 }
+.mala .group,
 .mala .pair {
   display: inline-flex;
   gap: 0.2em;
   align-items: flex-start;
+}
+.mala .group {
+  gap: 0.3em;
 }
 .mala .lead,
 .mala .host {
@@ -894,6 +1031,118 @@ kbd {
   border-radius: 3px;
   padding: 0 4px;
   background: #fff;
+}
+/* bottom player: only on touch screens and narrow windows */
+.player {
+  display: none;
+}
+@media (max-width: 800px), (pointer: coarse) {
+  main {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 8px 180px; /* room for the docked player */
+  }
+  /* score above the fold, settings below it */
+  .score {
+    order: -1;
+    padding: 8px 12px;
+    margin-top: 0;
+  }
+  header {
+    order: -2;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 4px 0 8px;
+  }
+  h2 {
+    margin: 4px 0 8px;
+  }
+  .mala p {
+    font-size: 36px;
+  }
+  .controls .actions,
+  .controls .bell-field,
+  .shortcuts {
+    display: none;
+  }
+  .player {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+    touch-action: manipulation; /* no double-tap zoom while tapping along */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .player-bells .p-togglebutton {
+    padding: 4px 12px;
+    font-size: 13px;
+  }
+  .player-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    width: 100%;
+    max-width: 420px;
+  }
+  .pbtn {
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--ink);
+    font-size: 16px;
+    display: grid;
+    place-items: center;
+  }
+  .pbtn:disabled {
+    opacity: 0.4;
+  }
+  .tap {
+    width: 96px;
+    height: 96px;
+    flex: none;
+    border: 0;
+    border-radius: 50%;
+    background: var(--c, var(--line));
+    color: #fff;
+    display: grid;
+    place-content: center;
+    line-height: 1;
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--c, #000) 35%, transparent);
+    transition: transform 0.06s, box-shadow 0.06s;
+  }
+  .tap strong {
+    font: 700 36px Georgia, serif;
+  }
+  .tap small {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.85;
+  }
+  .tap:disabled {
+    color: var(--muted);
+    box-shadow: none;
+  }
+  .tap.hit {
+    transform: scale(0.92);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  .tap.waiting {
+    animation: pulse-bg 0.8s ease-in-out infinite alternate;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   * {
