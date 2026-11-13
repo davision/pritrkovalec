@@ -154,6 +154,7 @@ function savePlay(r) {
   } catch {}
 }
 const showStats = ref(false)
+const showSettings = ref(false)
 // one entry per song, most recently played first (Map keeps the order songs are first seen in)
 const stats = computed(() => {
   const by = new Map()
@@ -272,7 +273,7 @@ function ring(bell) {
 }
 
 function onKey(e) {
-  if (e.code === 'Escape' && e.type === 'keydown') return finish()
+  if (e.code === 'Escape' && e.type === 'keydown') return showSettings.value || showStats.value ? (showSettings.value = showStats.value = false) : finish()
   // 1–4 picks the bell to play along, 0 = all bells play
   if (/^Digit[0-4]$/.test(e.code) && e.type === 'keydown' && !e.metaKey && !e.ctrlKey) {
     e.preventDefault()
@@ -334,85 +335,69 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main>
-    <header>
+  <!-- app bar across the whole page: settings left, title centred, statistics right -->
+  <header>
+    <Button class="icon-btn" icon="pi pi-cog" severity="secondary" outlined aria-label="Nastavitve" title="Nastavitve" @click="showSettings = true" />
+    <div class="brand">
       <h1>Pritrkovalec</h1>
-      <Tag :value="`v${VERSION}`" severity="secondary" rounded class="version" />
-      <Button class="stats-btn" severity="secondary" outlined aria-label="Statistika igranja" title="Statistika" @click="showStats = true">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <path d="M3 21h18M6 17v-6M11 17V5M16 17v-9M21 17v-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-        </svg>
-      </Button>
-    </header>
-
-    <Dialog v-model:visible="showStats" modal dismissable-mask header="Statistika" class="stats-dialog">
-      <p v-if="!stats.length" class="stats-empty">Še ni odigranih melodij. Izberi zvon, igraj zraven in na koncu pritisni Ustavi.</p>
-      <details v-for="s in stats" :key="s.name" class="stats-song">
-        <summary>
-          <span>{{ s.name }}<small>{{ s.list.length }}× igrano</small></span>
-          <strong :title="'Najboljši rezultat'">{{ s.best }}</strong>
-        </summary>
-        <ul>
-          <li v-for="p in s.list" :key="p.at">
-            <span>{{ fmtDate(p.at) }}<small>zvon {{ p.bell }} · {{ p.tempo }}/min</small></span>
-            <strong>{{ p.score }}</strong>
-          </li>
+      <Tag :value="`v${VERSION}`" severity="secondary" rounded />
+    </div>
+    <Button class="icon-btn" icon="pi pi-chart-bar" severity="secondary" outlined aria-label="Statistika igranja" title="Statistika" @click="showStats = true" />
+  </header>
+  <!-- desktop: settings and statistics are fixed side columns; tablet and phone: they slide in from the sides -->
+  <div class="layout">
+    <aside class="panel panel-left" :class="{ open: showSettings }" aria-label="Nastavitve">
+      <div class="panel-head">
+        <h2>Nastavitve</h2>
+        <Button icon="pi pi-times" severity="secondary" text rounded aria-label="Zapri" @click="showSettings = false" />
+      </div>
+      <div class="drawer-fields">
+        <div class="field">
+          <label>Vrsta zapisa</label>
+          <Select v-model="view" :options="viewOptions" option-label="label" option-value="value" />
+        </div>
+        <div class="field">
+          <label>Tempo <strong>{{ rpm }}</strong> udarcev/min</label>
+          <Slider v-model="tempoIdx" :min="0" :max="TEMPOS.length - 1" :step="1" />
+          <div class="ticks">
+            <button v-for="(value, i) in TEMPOS" :key="value" :class="{ on: i === tempoIdx }" @click="tempoIdx = i">{{ value }}</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Glasnost spremljave (x) <strong>{{ hostVolume }} %</strong></label>
+          <Slider v-model="hostVolume" :min="0" :max="100" :step="5" />
+        </div>
+        <label class="toggle"><ToggleSwitch v-model="waitForMe" /> Počakaj name (P)</label>
+        <!-- <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label> -->
+      </div>
+      <div class="panel-foot">
+        <ul class="shortcuts">
+          <li><Tag class="key" value="preslednica" /> udari izbrani zvon (na zvonu 1 začne melodijo)</li>
+          <li><Tag class="key" value="S" /> predvajaj / pavza</li>
+          <li><Tag class="key" value="←" /> <Tag class="key" value="→" /> nota nazaj / naprej</li>
+          <li><Tag class="key" value="1" />–<Tag class="key" value="4" /> izberi zvon, <Tag class="key" value="0" /> vsi zvonovi</li>
+          <li><Tag class="key" value="Esc" /> ustavi (na začetek)</li>
+          <li><Tag class="key" value="P" /> počakaj name</li>
         </ul>
-      </details>
-    </Dialog>
+        <footer class="footer">Copyright © 2026 David Ličen</footer>
+      </div>
+    </aside>
+  <main>
+
+
 
     <section class="controls">
       <div class="field">
         <label>Melodija</label>
-        <Select v-model="pieceIdx" :options="pieceOptions" option-label="label" option-value="value" />
+        <Select v-model="pieceIdx" class="piece-select" :options="pieceOptions" option-label="label" option-value="value" />
       </div>
       <!-- <div class="field">
         <label>Uglasitev</label>
         <Select v-model="tuning" :options="tuningOptions" />
       </div> -->
-      <div class="field">
-        <label>Vrsta zapisa</label>
-        <Select v-model="view" :options="viewOptions" option-label="label" option-value="value" />
-      </div>
-      <div class="field bell-field">
-        <label>Igram zvon (preslednica)</label>
-        <SelectButton v-model="practice" :options="bellOptions" option-label="label" option-value="value" :allow-empty="false">
-          <template #option="{ option }">
-            <span v-if="option.value >= 0" class="dot" :class="`b${option.value}`" />{{ option.label }}
-          </template>
-        </SelectButton>
-      </div>
-
-      <div class="field">
-        <label>Tempo <strong>{{ rpm }}</strong> udarcev/min</label>
-        <Slider v-model="tempoIdx" :min="0" :max="TEMPOS.length - 1" :step="1" />
-        <div class="ticks">
-          <button v-for="(value, i) in TEMPOS" :key="value" :class="{ on: i === tempoIdx }" @click="tempoIdx = i">{{ value }}</button>
-        </div>
-      </div>
-      <div class="field">
-        <label>Glasnost spremljave (x) <strong>{{ hostVolume }} %</strong></label>
-        <Slider v-model="hostVolume" :min="0" :max="100" :step="5" />
-      </div>
-
-      <div class="toggles">
-        <label class="toggle"><ToggleSwitch v-model="waitForMe" /> Počakaj name (P)</label>
-        <!-- <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label> -->
-      </div>
-      <div class="actions">
-        <Button label="❮ Nazaj" severity="secondary" outlined @click="step(-1)" />
-        <Button class="play-btn" @click="playing ? pause() : resume()">
-          <span v-if="playing" class="icon-pause" aria-hidden="true" /><span v-else aria-hidden="true">▶</span>
-          {{ playing ? 'Pavza' : 'Predvajaj' }}
-        </Button>
-        <Button label="Naprej ❯" severity="secondary" outlined @click="step(1)" />
-        <Button label="■ Ustavi" severity="secondary" outlined :disabled="!playing && current < 0" @click="finish()" />
-        <!-- <Button label="♩ Samo metronom" severity="secondary" outlined :disabled="playing" @click="(clickOnly = true), play()" /> -->
-      </div>
     </section>
 
     <section class="score" :class="[view, { practising: practice >= 0 }]" :style="{ '--host-opacity': 0.25 + (0.75 * hostVolume) / 100 }">
-      <h2>{{ piece.name }}</h2>
       <div v-if="view === 'mala'" class="mala">
         <p v-for="(line, l) in malaLines" :id="`mala-${l}`" :key="l">
           <span v-for="(g, k) in groups(line)" :key="k" class="group">
@@ -577,15 +562,6 @@ onBeforeUnmount(() => {
       </template>
     </section>
 
-    <p class="hint" v-if="practice >= 0">Zvon {{ practice + 1 }} je utišan, igraš ga ti (obrobljene note).<strong v-if="waiting >= 0"> Čakam nate …</strong></p>
-    <ul class="hint shortcuts">
-      <li><kbd>preslednica</kbd> udari izbrani zvon (na zvonu 1 začne melodijo)</li>
-      <li><kbd>S</kbd> predvajaj / pavza</li>
-      <li><kbd>←</kbd> <kbd>→</kbd> nota nazaj / naprej</li>
-      <li><kbd>1</kbd>–<kbd>4</kbd> izberi zvon, <kbd>0</kbd> vsi zvonovi</li>
-      <li><kbd>Esc</kbd> ustavi (na začetek)</li>
-      <li><kbd>P</kbd> počakaj name</li>
-    </ul>
 
     <Dialog :visible="!!result" modal dismissable-mask header="Natančnost igranja" class="result-dialog" @update:visible="result = null">
       <template v-if="result">
@@ -607,7 +583,13 @@ onBeforeUnmount(() => {
     <nav class="player" aria-label="Predvajalnik">
       <SelectButton v-model="practice" :options="bellOptions" option-label="label" option-value="value" :allow-empty="false" class="player-bells">
         <template #option="{ option }">
-          <span v-if="option.value >= 0" class="dot" :class="`b${option.value}`" />{{ option.label }}
+          <!-- a bell in its own colour with its number inside -->
+          <svg v-if="option.value >= 0" class="bell-icon" :class="`b${option.value}`" viewBox="0 0 32 32" role="img" :aria-label="`Zvon ${option.label}`">
+            <path d="M14.5 2.5h3v2.2C22.6 5.5 25.5 9.6 25.5 15v5.5l3 4V26h-25v-1.5l3-4V15c0-5.4 2.9-9.5 8-10.3z" />
+            <circle cx="16" cy="28.3" r="2.6" />
+            <text x="16" y="19.5">{{ option.label }}</text>
+          </svg>
+          <span v-else>{{ option.label }}</span>
         </template>
       </SelectButton>
       <div class="player-row">
@@ -629,8 +611,28 @@ onBeforeUnmount(() => {
         <button class="pbtn" aria-label="Nota naprej" @click="step(1)">❯</button>
       </div>
     </nav>
-    <footer class="footer">Copyright © 2026 David Ličen</footer>
   </main>
+    <aside class="panel panel-right" :class="{ open: showStats }" aria-label="Statistika">
+      <div class="panel-head">
+        <h2>Statistika</h2>
+        <Button icon="pi pi-times" severity="secondary" text rounded aria-label="Zapri" @click="showStats = false" />
+      </div>
+      <p v-if="!stats.length" class="stats-empty">Še ni odigranih melodij. Izberi zvon, igraj zraven in na koncu pritisni Ustavi.</p>
+      <details v-for="s in stats" :key="s.name" class="stats-song">
+        <summary>
+          <span>{{ s.name }}<small>{{ s.list.length }}× igrano</small></span>
+          <strong :title="'Najboljši rezultat'">{{ s.best }}</strong>
+        </summary>
+        <ul>
+          <li v-for="p in s.list" :key="p.at">
+            <span>{{ fmtDate(p.at) }}<small>zvon {{ p.bell }} · {{ p.tempo }}/min</small></span>
+            <strong>{{ p.score }}</strong>
+          </li>
+        </ul>
+      </details>
+    </aside>
+  </div>
+  <div v-if="showSettings || showStats" class="backdrop" @click="showSettings = showStats = false" />
 </template>
 
 <style>
@@ -645,6 +647,7 @@ onBeforeUnmount(() => {
   --b3: #9b59b6;
   --col-hl: rgba(27, 27, 27, 0.07);
   --lane: #fff0b0;
+  --player-h: 169px; /* height of the docked player, panels and the page end above it */
   color-scheme: light;
 }
 * {
@@ -654,32 +657,137 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font: 15px/1.4 system-ui, sans-serif;
+  font: 15px/1.4 Roboto, system-ui, sans-serif;
 }
+/* one layout for phone, tablet and desktop: app bar, melody picker, score, player docked at the bottom */
+/* main column: white, no boxes, full height between the app bar and the bottom */
 main {
   max-width: 1240px;
+  min-height: calc(100dvh - 61px - env(safe-area-inset-top)); /* exactly the screen below the app bar */
+  background: #fff;
   margin: 0 auto;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px calc(var(--player-h) + 16px); /* room for the docked player */
 }
 header {
-  position: relative;
-  display: flex;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px; /* equal sides keep the title truly centred */
   align-items: center;
-  gap: 10px;
-  justify-content: center;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  background: rgba(251, 250, 246, 0.94); /* --paper */
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
 }
-.stats-btn {
-  position: absolute;
-  right: 0;
+.brand {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+.icon-btn {
   width: 44px;
   height: 44px;
   padding: 0;
 }
-/* statistics dialog: songs with their best score, each expands into its plays */
-.stats-dialog {
-  width: min(94vw, 440px);
-  max-height: 80vh;
+/* side panels: off-canvas below 1200px, always-open columns above */
+.panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  width: min(88vw, 360px);
+  overflow-y: auto;
+  padding: 0 20px 24px;
+  background: #fff;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.15);
+  visibility: hidden; /* closed panels stay out of the tab order */
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s 0.3s;
 }
+.panel-left {
+  left: 0;
+  transform: translateX(-100%);
+}
+.panel-right {
+  right: 0;
+  transform: translateX(100%);
+}
+.panel.open {
+  visibility: visible;
+  transform: none;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  background: inherit;
+}
+.panel-head h2 {
+  margin: 0;
+  text-align: left;
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: rgba(0, 0, 0, 0.35);
+}
+@media (min-width: 1200px) {
+  .layout {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 340px;
+    align-items: start;
+  }
+  .panel {
+    position: sticky;
+    top: 61px; /* below the app bar */
+    z-index: auto;
+    width: auto;
+    height: calc(100dvh - 61px); /* full height; the border runs on behind the docked player */
+    padding-bottom: calc(var(--player-h) + 16px); /* keeps the panel's content above the player */
+    visibility: visible;
+    transform: none;
+    transition: none;
+    box-shadow: none;
+    background: var(--paper);
+  }
+  .panel-left {
+    grid-column: 1;
+    border-right: 1px solid var(--line);
+  }
+  .panel-right {
+    grid-column: 3;
+    border-left: 1px solid var(--line);
+  }
+  main {
+    grid-column: 2;
+    width: 100%;
+  }
+  /* panels are always open here: no open buttons, close buttons or backdrop */
+  .icon-btn {
+    visibility: hidden;
+  }
+  .panel-head .p-button,
+  .backdrop {
+    display: none;
+  }
+}
+.drawer-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 8px;
+}
+/* statistics: songs with their best score, each expands into its plays */
 .stats-empty {
   color: var(--muted);
 }
@@ -717,7 +825,8 @@ header {
   color: var(--muted);
 }
 .stats-song summary strong {
-  font: 700 22px Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
 }
 .stats-song ul {
   list-style: none;
@@ -729,28 +838,21 @@ header {
   border-top: 1px dashed var(--line);
 }
 h1 {
-  font-family: Georgia, 'Times New Roman', serif;
-  margin: 8px 0;
-}
-.sub {
-  color: var(--muted);
-  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 500;
+  margin: 0;
 }
 .b0 { --c: var(--b0); }
 .b1 { --c: var(--b1); }
 .b2 { --c: var(--b2); }
 .b3 { --c: var(--b3); }
 
+/* melody picker: label centred above the select, part of the plain white main column */
 .controls {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px 32px;
-  align-items: start;
-  padding: 20px;
-  margin: 12px 0 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  padding: 12px 16px;
+}
+.controls .field > label {
+  text-align: center;
 }
 .field {
   display: flex;
@@ -773,7 +875,7 @@ h1 {
   justify-content: space-between;
 }
 .ticks button {
-  font: 12px ui-monospace, monospace;
+  font-size: 12px;
   border: 0;
   background: none;
   color: var(--muted);
@@ -784,29 +886,16 @@ h1 {
   color: var(--ink);
   font-weight: 700;
 }
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--c);
-  margin-right: 6px;
+.bell-icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  fill: var(--c);
 }
-@media (max-width: 800px) {
-  .controls {
-    grid-template-columns: 1fr;
-  }
-}
-.toggles {
-  flex-direction: column;
-  align-items: flex-start !important;
-  padding-top: 4px;
-}
-.toggles,
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 24px;
-  align-items: center;
+.bell-icon text {
+  fill: #fff;
+  font: 700 12px Roboto, sans-serif;
+  text-anchor: middle;
 }
 /* pause icon as two bars: the ❚❚ glyph renders as a solid block in some fonts */
 .icon-pause {
@@ -816,34 +905,26 @@ h1 {
   border-left: 3.5px solid currentColor;
   border-right: 3.5px solid currentColor;
 }
-.play-btn {
-  gap: 8px;
-}
 .toggle {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
 }
-.actions {
-  grid-column: 1 / -1;
-  justify-content: center;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
 
+/* the score fills the screen between the melody picker and the player, content centred */
 .score {
+  flex: 1; /* takes the space left between the melody picker and the player */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   overflow-x: auto;
-  padding: 20px;
-  margin: 12px 0 8px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  padding: 8px 12px;
 }
 h2 {
   font-size: 18px;
   text-align: center;
-  margin: 20px 0 10px 0;
+  margin: 4px 0 8px;
 }
 .row {
   display: grid;
@@ -862,7 +943,7 @@ h2 {
   place-self: center;
   width: 18px;
   height: 18px;
-  font: 700 11px/1 ui-monospace, monospace;
+  font: 700 11px/1 Roboto, sans-serif;
   border: 0;
   border-radius: 50%;
   background: var(--c);
@@ -877,7 +958,7 @@ h2 {
 }
 /* Bobnarske note: plain printed bell numbers like the book, coloured only while ringing */
 .drum .bell-nums button {
-  font: 13px/1 'Times New Roman', Georgia, serif;
+  font: 13px/1 Roboto, sans-serif;
   background: none;
   color: var(--ink);
   border-radius: 3px;
@@ -976,9 +1057,9 @@ h2 {
   height: 23px;
   display: grid;
   place-items: center;
-  font: 700 13px 'Courier New', Courier, monospace;
+  font: 700 13px Roboto, sans-serif;
 }
-/* Courier is thin: the x needs size and weight to read as clearly as the numbered squares */
+/* the x needs a bit more size to read as clearly as the numbered squares */
 :where(.drum) .note.x {
   background: none;
   color: var(--ink);
@@ -1039,7 +1120,7 @@ h2 {
   pointer-events: none;
 }
 /* Po Malavašiču: big handwritten-style digits, hosting bell as superscript */
-.mala {
+div.mala { /* div: the score section also carries the view name as a class */
   display: grid;
   grid-template-columns: minmax(0, max-content); /* as wide as the longest line, but never wider than the screen */
   justify-content: center;
@@ -1051,7 +1132,7 @@ h2 {
   flex-wrap: wrap;
   gap: 0 0.6em;
   margin: 0 0 0.35em;
-  font: 500 44px/1.5 Georgia, 'Times New Roman', serif;
+  font: 500 clamp(32px, 9vw, 44px)/1.5 Georgia, 'Times New Roman', serif; /* the one place that keeps the handwritten serif */
 }
 .mala .group,
 .mala .pair {
@@ -1104,7 +1185,7 @@ h2 {
   font-size: 0.4em;
 }
 /* Notni in številčni zapis */
-.staff {
+div.staff {
   display: grid;
   justify-content: center;
   gap: 4px;
@@ -1127,7 +1208,7 @@ h2 {
   font-size: 30px; /* digits are 2 sp tall; scaled down so both fit the 4-line staff */
 }
 .staff .num {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: Roboto, sans-serif;
   text-anchor: middle;
 }
 .staff .num {
@@ -1185,32 +1266,46 @@ h2 {
 .accent {
   position: absolute;
   top: -16px;
-  font: 700 13px 'Courier New', Courier, monospace;
+  font: 700 13px Roboto, sans-serif;
   color: var(--ink);
 }
-.hint {
-  color: var(--muted);
+/* the melody picker doubles as the score's title */
+.piece-select .p-select-label {
+  font-weight: 700;
+}
+/* bottom of the left panel: keyboard shortcuts and copyright */
+.panel-left {
+  display: flex;
+  flex-direction: column;
+}
+.panel-foot {
+  margin-top: auto;
+  padding-top: 24px;
 }
 .footer {
-  margin-top: 32px;
-  padding-top: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
-  text-align: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 .shortcuts {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  list-style: none;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
   padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
 }
-kbd {
+.shortcuts .key {
+  padding: 1px 6px;
+  font: 500 11px/1.4 Roboto, sans-serif;
   border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 0 4px;
+  border-bottom-width: 2px; /* reads as a key cap */
   background: #fff;
+  color: var(--ink);
 }
 /* accuracy dialog after Ustavi */
 .result-dialog {
@@ -1219,7 +1314,7 @@ kbd {
 .result-score {
   margin: 0;
   text-align: center;
-  font: 700 64px/1 Georgia, serif;
+  font: 700 64px/1 Roboto, sans-serif;
 }
 .result-score small {
   font-size: 20px;
@@ -1251,131 +1346,98 @@ kbd {
 .result-close {
   width: 100%;
 }
-/* bottom player: only on touch screens and narrow windows */
+/* player docked at the bottom; the circle strikes the chosen bell like space */
 .player {
-  display: none;
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
+  touch-action: manipulation; /* no double-tap zoom while tapping along */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
-@media (max-width: 800px), (pointer: coarse) {
-  main {
-    display: flex;
-    flex-direction: column;
-    padding: 8px 8px 180px; /* room for the docked player */
-  }
-  /* score above the fold, settings below it */
-  .score {
-    order: -1;
-    padding: 8px 12px;
-    margin-top: 0;
-  }
-  /* app bar: title and version on the left, statistics on the right, stays on top while scrolling */
-  header {
-    order: -2;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    justify-content: flex-start;
-    margin: -8px -8px 8px; /* full width over main's padding */
-    padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px;
-    background: rgba(251, 250, 246, 0.94); /* --paper */
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--line);
-  }
-  h1 {
-    font-size: 20px;
-    margin: 0;
-  }
-  .stats-btn {
-    position: static;
-    margin-left: auto;
-  }
-  h2 {
-    margin: 4px 0 8px;
-  }
-  .mala p {
-    font-size: 36px;
-  }
-  .controls .actions,
-  .controls .bell-field,
+.player-bells .p-togglebutton {
+  padding: 4px 12px;
+  font-size: 13px;
+  background: transparent; /* no grey bar behind the bells */
+  border-color: transparent;
+}
+.player-bells .p-togglebutton.p-togglebutton-checked {
+  background: transparent;
+  border-color: transparent;
+}
+/* on white the chosen bell needs an outline to stand out */
+.player-bells .p-togglebutton-checked .p-togglebutton-content {
+  box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.player-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+}
+.pbtn {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--ink);
+  font-size: 16px;
+  display: grid;
+  place-items: center;
+}
+.pbtn:disabled {
+  opacity: 0.4;
+}
+.tap {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--c, var(--line));
+  color: #fff;
+  display: grid;
+  place-content: center;
+  line-height: 1;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--c, #000) 35%, transparent);
+  transition: transform 0.06s, box-shadow 0.06s;
+}
+.tap strong {
+  font: 700 36px Roboto, sans-serif;
+}
+.tap small {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+.tap:disabled {
+  color: var(--muted);
+  box-shadow: none;
+}
+.tap.hit {
+  transform: scale(0.92);
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--c) 30%, transparent);
+}
+.tap.waiting {
+  animation: pulse-bg 0.8s ease-in-out infinite alternate;
+}
+/* keyboard shortcuts are only useful with a keyboard */
+@media (pointer: coarse) {
   .shortcuts {
     display: none;
-  }
-  .player {
-    position: fixed;
-    inset: auto 0 0;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
-    background: rgba(255, 255, 255, 0.96);
-    border-top: 1px solid var(--line);
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06);
-    touch-action: manipulation; /* no double-tap zoom while tapping along */
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .player-bells .p-togglebutton {
-    padding: 4px 12px;
-    font-size: 13px;
-  }
-  .player-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    width: 100%;
-    max-width: 420px;
-  }
-  .pbtn {
-    width: 48px;
-    height: 48px;
-    border: 1px solid var(--line);
-    border-radius: 50%;
-    background: #fff;
-    color: var(--ink);
-    font-size: 16px;
-    display: grid;
-    place-items: center;
-  }
-  .pbtn:disabled {
-    opacity: 0.4;
-  }
-  .tap {
-    width: 96px;
-    height: 96px;
-    flex: none;
-    border: 0;
-    border-radius: 50%;
-    background: var(--c, var(--line));
-    color: #fff;
-    display: grid;
-    place-content: center;
-    line-height: 1;
-    box-shadow: 0 6px 18px color-mix(in srgb, var(--c, #000) 35%, transparent);
-    transition: transform 0.06s, box-shadow 0.06s;
-  }
-  .tap strong {
-    font: 700 36px Georgia, serif;
-  }
-  .tap small {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    opacity: 0.85;
-  }
-  .tap:disabled {
-    color: var(--muted);
-    box-shadow: none;
-  }
-  .tap.hit {
-    transform: scale(0.92);
-    box-shadow: 0 0 0 10px color-mix(in srgb, var(--c) 30%, transparent);
-  }
-  .tap.waiting {
-    animation: pulse-bg 0.8s ease-in-out infinite alternate;
   }
 }
 @media (prefers-reduced-motion: reduce) {
