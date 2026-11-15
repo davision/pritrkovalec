@@ -3,19 +3,28 @@ import { shallowRef } from 'vue'
 import Select from 'primevue/select'
 import Slider from 'primevue/slider'
 import ToggleSwitch from 'primevue/toggleswitch'
+import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import SidePanel from './SidePanel.vue'
-import { TEMPOS, VIEW_OPTIONS, type View } from '../composables/useSettings.ts'
+import {
+  TEMPOS,
+  VIEW_OPTIONS,
+  BEAT_VIEW_OPTIONS,
+  type View,
+  type BeatView,
+} from '../composables/useSettings.ts'
 import { useInstallApp } from '../composables/useInstallApp.ts'
 
 // Left panel: how the score looks and plays, then keyboard shortcuts and the copyright at the bottom.
-const { open = false } = defineProps<{ open?: boolean }>()
+const { open = false, beatsPerBar = 4 } = defineProps<{ open?: boolean; beatsPerBar?: number }>()
 const emit = defineEmits<{ close: [] }>()
 const view = defineModel<View>('view', { required: true })
 const tempoIdx = defineModel<number>('tempoIdx', { required: true })
 const hostVolume = defineModel<number>('hostVolume', { required: true })
 const waitForMe = defineModel<boolean>('waitForMe', { required: true })
+const metronome = defineModel<boolean>('metronome', { required: true })
+const beatView = defineModel<BeatView>('beatView', { required: true })
 
 // add the app to the phone's home screen; iOS only gets the steps, it has no install prompt
 const { mode: installMode, install } = useInstallApp()
@@ -57,7 +66,21 @@ const showIosSteps = shallowRef(false)
         <Slider v-model="hostVolume" :min="0" :max="100" :step="5" />
       </div>
       <label class="toggle"><ToggleSwitch v-model="waitForMe" /> Počakaj name (P)</label>
-      <!-- <label class="toggle"><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label> -->
+      <label class="toggle"
+        ><ToggleSwitch v-model="metronome" /> Metronom {{ beatsPerBar }}/4 (M)</label
+      >
+      <div class="field">
+        <label id="beat-view-label">Utrip med predvajanjem</label>
+        <SelectButton
+          v-model="beatView"
+          :options="BEAT_VIEW_OPTIONS"
+          option-label="label"
+          option-value="value"
+          :allow-empty="false"
+          aria-labelledby="beat-view-label"
+          class="beat-view"
+        />
+      </div>
     </div>
     <div v-if="installMode" class="install">
       <Button
@@ -85,6 +108,7 @@ const showIosSteps = shallowRef(false)
         </li>
         <li><Tag class="key" value="Esc" /> ustavi (na začetek)</li>
         <li><Tag class="key" value="P" /> počakaj name</li>
+        <li><Tag class="key" value="M" /> metronom</li>
       </ul>
       <footer class="footer">Copyright © 2026 David Ličen</footer>
     </div>
@@ -116,6 +140,12 @@ const showIosSteps = shallowRef(false)
 .ticks button.on {
   color: var(--ink);
   font-weight: 700;
+}
+.beat-view {
+  display: flex;
+}
+.beat-view .p-togglebutton {
+  flex: 1;
 }
 /* add to home screen */
 .install {

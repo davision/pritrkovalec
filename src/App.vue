@@ -15,14 +15,28 @@ import { useSettings, PIECE_OPTIONS, DURATION_OPTIONS } from './composables/useS
 import { usePlayer } from './composables/usePlayer.ts'
 import { usePlayHistory } from './composables/usePlayHistory.ts'
 import { useShortcuts } from './composables/useShortcuts.ts'
+import { useBeat } from './composables/useBeat.ts'
 import { useMediaQuery } from './composables/useMediaQuery.ts'
 import { confetti } from './lib/confetti.ts'
+import { beatsPerBar } from './lib/notation.ts'
 import type { Result } from './lib/score.ts'
 
 // The page: app bar, settings and statistics panels, melody picker, score and the docked player.
 // It connects the pieces; playback lives in usePlayer, the saved choices in useSettings.
 const settings = useSettings()
-const { pieceIdx, view, practice, tempoIdx, hostVolume, waitForMe, minutes, piece, rpm } = settings
+const {
+  pieceIdx,
+  view,
+  practice,
+  tempoIdx,
+  hostVolume,
+  waitForMe,
+  metronome,
+  beatView,
+  minutes,
+  piece,
+  rpm,
+} = settings
 // when the chosen playing time (Igraj) is over, it ends like Ustavi
 const {
   playing,
@@ -40,6 +54,11 @@ const {
   finish,
 } = usePlayer(settings, { onTimeUp: () => stopAndScore() })
 const { stats, add: addPlay } = usePlayHistory()
+// visual metronome: lit dot / amber glow on every melody note while playing
+const { beat: barBeat, pulse } = useBeat(piece, current, playing)
+const perBar = computed(() => beatsPerBar(piece.value.strikes))
+const showDots = computed(() => beatView.value === 'dots' || beatView.value === 'both')
+const showGlow = computed(() => beatView.value === 'glow' || beatView.value === 'both')
 
 // same breakpoint as the side panels: desktop shows Bobnarske note whole, smaller screens as a moving track
 const desktop = useMediaQuery('(min-width: 1200px)')
@@ -65,6 +84,7 @@ useShortcuts({
       : stopAndScore(),
   bell: (b) => (practice.value = b),
   toggleWait: () => (waitForMe.value = !waitForMe.value),
+  toggleMetronome: () => (metronome.value = !metronome.value),
   togglePlay: toggle,
   step,
   tap,
@@ -80,7 +100,13 @@ const scoreProps = computed(() => ({
 </script>
 
 <template>
-  <AppHeader @settings="showSettings = true" @stats="showStats = true" />
+  <AppHeader
+    :dots="showDots && playing"
+    :beats="perBar"
+    :beat="barBeat"
+    @settings="showSettings = true"
+    @stats="showStats = true"
+  />
   <!-- desktop: settings and statistics are fixed side columns; tablet and phone: they slide in from the sides -->
   <div class="layout">
     <SettingsPanel
@@ -88,10 +114,23 @@ const scoreProps = computed(() => ({
       v-model:tempo-idx="tempoIdx"
       v-model:host-volume="hostVolume"
       v-model:wait-for-me="waitForMe"
+      v-model:metronome="metronome"
+      v-model:beat-view="beatView"
+      :beats-per-bar="perBar"
       :open="showSettings"
       @close="showSettings = false"
     />
     <main>
+      <!-- glow: an amber inner shadow round the visible part of the white sheet (above the player),
+           restarted (key) on every melody note -->
+      <div
+        v-if="showGlow && barBeat >= 0"
+        :key="pulse"
+        class="beat-glow"
+        :class="{ down: barBeat === 0 }"
+        :style="{ '--glow-dur': `${Math.min(0.45, beat * 0.6)}s` }"
+        aria-hidden="true"
+      />
       <section class="controls">
         <div class="field inline piece-field">
           <label id="piece-label">Melodija</label>
@@ -171,11 +210,48 @@ main {
     100dvh - 61px - env(safe-area-inset-top)
   ); /* exactly the screen below the app bar */
   background: #fff;
-  border-radius: 10px 10px 0 0; /* a sheet of paper laid on the dark frame */
+  border-radius: 10px; /* a sheet of paper laid on the dark frame */
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   padding: 8px 8px calc(var(--player-h) + 16px); /* room for the docked player */
+}
+/* visual metronome glow: flashes in at once, fades over about half a beat; stronger on the downbeat.
+   Soft and edge-only on purpose: a full-screen flash at these tempos would be tiring (and a seizure risk). */
+.beat-glow {
+  /* sticks over the visible sheet, from below the app bar to above the docked player, so all four edges
+     show also when the score scrolls; takes no room (negative margin) */
+  --glow-h: calc(
+    100dvh - 61px - env(safe-area-inset-top) - var(--player-h) - env(safe-area-inset-bottom)
+  );
+  position: sticky;
+  top: calc(61px + env(safe-area-inset-top));
+  flex: none;
+  height: var(--glow-h);
+  margin: -8px -8px calc(8px - var(--glow-h));
+  border-radius: 10px 10px 0 0; /* like the sheet: round top, straight where it runs under the player */
+  pointer-events: none;
+  z-index: 1;
+  animation: beat-glow var(--glow-dur, 0.3s) ease-out forwards;
+  --glow: inset 0 0 0 3px rgba(244, 194, 108, 0.9), inset 0 0 70px 6px rgba(244, 194, 108, 0.5);
+}
+.beat-glow.down {
+  --glow: inset 0 0 0 5px rgba(224, 160, 48, 0.95), inset 0 0 120px 12px rgba(224, 160, 48, 0.55);
+}
+@keyframes beat-glow {
+  from {
+    box-shadow: var(--glow);
+  }
+  to {
+    box-shadow:
+      inset 0 0 0 0 transparent,
+      inset 0 0 0 0 transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .beat-glow {
+    opacity: 0.5;
+  }
 }
 /* what shows around the sheet's rounded corners: the same dark as the app bar and panels */
 .layout {

@@ -10,6 +10,14 @@ export const VIEW_OPTIONS: { label: string; value: View }[] = [
   { label: 'Notni in številčni zapis', value: 'staff' },
   { label: 'Poenostavljen notni zapis', value: 'simple' },
 ]
+// visual metronome while playing: a row of dots, an amber glow around the score, both or none
+export type BeatView = 'off' | 'dots' | 'glow' | 'both'
+export const BEAT_VIEW_OPTIONS: { label: string; value: BeatView }[] = [
+  { label: 'Brez', value: 'off' },
+  { label: 'Pike', value: 'dots' },
+  { label: 'Blisk', value: 'glow' },
+  { label: 'Oboje', value: 'both' },
+]
 // -1 = all bells play, 0–3 = the bell the player rings themselves
 export const BELL_OPTIONS = [-1, 0, 1, 2, 3].map((b) => ({
   label: b < 0 ? 'Vsi' : String(b + 1),
@@ -39,6 +47,8 @@ export function useSettings() {
   const tempoIdx = shallowRef(TEMPOS.indexOf(180))
   const hostVolume = shallowRef(55) // % volume of the x strikes, 0 = only the lead melody plays
   const waitForMe = shallowRef(false) // pause before each practice-bell note until the player rings it
+  const metronome = shallowRef(false) // tick on every melody note, accented on the first beat of the bar
+  const beatView = shallowRef<BeatView>('both') // how the beat is shown while playing
   const minutes = shallowRef(0) // play for this many minutes, then stop; 0 = until stopped
 
   // each saved setting with the check its stored value must pass
@@ -54,6 +64,8 @@ export function useSettings() {
       (v) => Number.isFinite(v) && (v as number) >= 0 && (v as number) <= 100,
     ],
     waitForMe: [waitForMe, (v) => typeof v === 'boolean'],
+    metronome: [metronome, (v) => typeof v === 'boolean'],
+    beatView: [beatView, (v) => BEAT_VIEW_OPTIONS.some((o) => o.value === v)],
     minutes: [minutes, (v) => DURATION_OPTIONS.some((o) => o.value === v)],
   }
   try {
@@ -61,13 +73,13 @@ export function useSettings() {
     for (const [k, [r, ok]] of Object.entries(saved)) if (ok(stored[k])) r.value = stored[k]
     const i = pieces.findIndex((p) => p.name === stored.piece)
     if (i >= 0) pieceIdx.value = i
-  } catch { } // storage blocked (private mode) or unreadable: start with defaults
+  } catch {} // storage blocked (private mode) or unreadable: start with defaults
 
   watch([pieceIdx, ...Object.values(saved).map(([r]) => r)], () => {
     const out = Object.fromEntries(Object.entries(saved).map(([k, [r]]) => [k, r.value]))
     try {
       localStorage.setItem(KEY, JSON.stringify({ ...out, piece: pieces[pieceIdx.value]!.name }))
-    } catch { }
+    } catch {}
   })
 
   return {
@@ -77,6 +89,8 @@ export function useSettings() {
     tempoIdx,
     hostVolume,
     waitForMe,
+    metronome,
+    beatView,
     minutes,
     piece: computed(() => pieces[pieceIdx.value]!),
     rpm: computed(() => TEMPOS[tempoIdx.value]!),

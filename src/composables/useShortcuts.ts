@@ -4,6 +4,7 @@ export interface ShortcutActions {
   escape(): void
   bell(b: number): void // -1 = all bells, 0–3
   toggleWait(): void
+  toggleMetronome(): void
   togglePlay(): void
   step(d: number): void
   tap(): void
@@ -20,7 +21,10 @@ export function useShortcuts(actions: ShortcutActions) {
       e.preventDefault()
       return actions.bell(+e.code.slice(-1) - 1)
     }
-    // metronome (M) disabled for now
+    if (e.code === 'KeyM' && plain(e) && !e.repeat) {
+      e.preventDefault()
+      return actions.toggleMetronome()
+    }
     if (e.code === 'KeyP' && plain(e) && !e.repeat) {
       e.preventDefault()
       return actions.toggleWait()

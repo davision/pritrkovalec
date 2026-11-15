@@ -13,6 +13,7 @@ export interface PlayerSettings {
   rpm: Ref<number>
   practice: Ref<number> // bell the player rings, -1 = none
   waitForMe: Ref<boolean>
+  metronome: Ref<boolean> // tick on the melody notes
   hostVolume: Ref<number> // % volume of the x strikes
   minutes: Ref<number> // after this much playing time, finish the current pass and stop; 0 = until stopped
 }
@@ -31,7 +32,7 @@ interface Queued {
 // Plays a piece in time and lets the player ring one bell along with it.
 // Web Audio lookahead scheduler: audio is timed by the AudioContext, the shown position follows via rAF.
 export function usePlayer(
-  { piece, rpm, practice, waitForMe, hostVolume, minutes }: PlayerSettings,
+  { piece, rpm, practice, waitForMe, metronome, hostVolume, minutes }: PlayerSettings,
   { onTimeUp }: PlayerOptions = {},
 ) {
   const playing = shallowRef(false)
@@ -40,8 +41,6 @@ export function usePlayer(
   const current = shallowRef(-1) // strike shown as sounding, -1 = at the start
   const waiting = shallowRef(-1) // strike the melody is paused on in wait mode
   const flash = shallowRef(-1) // bell just rung by hand, for a short highlight
-  // metronome is disabled for now; kept so it can be switched back on
-  const metronome = false as boolean
   let clickOnly = false // metronome-only playback, bells silent
 
   let bells: Bells | undefined
@@ -94,7 +93,7 @@ export function usePlayer(
       if (!clickOnly && s.bell !== practice.value && volume > 0)
         bells.ring(freqs[s.bell]!, nextTime, s.accent, volume)
       if (s.bell === practice.value) judge.expect(nextTime * 1000) // a beat the player should hit
-      if ((metronome || clickOnly) && s.label !== 'x') bells.click(nextTime, s.label === '1')
+      if ((metronome.value || clickOnly) && s.label !== 'x') bells.click(nextTime, s.label === '1')
       queue.push({ i: next, t: nextTime })
       nextTime += 60 / rpm.value
       next = (next + 1) % strikes.length
