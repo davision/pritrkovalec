@@ -41,7 +41,7 @@ function onTitle() {
         />
         <circle cx="16" cy="28.3" r="2.6" />
       </svg>
-      <h1 @click="onTitle">Pritrkovalec</h1>
+      <h1 @click="onTitle">Zvonko</h1>
       <Tag :value="`v${VERSION}`" rounded class="version" />
     </div>
     <Button
