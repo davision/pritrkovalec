@@ -10,7 +10,7 @@ import './styles/base.css'
 import App from './App.vue'
 
 // Amber accent (bell bronze) instead of Aura's emerald; Aura's dark surfaces are already zinc.
-const Pritrkovalec = definePreset(Aura, {
+const Zvonko = definePreset(Aura, {
   semantic: {
     primary: Object.fromEntries(
       [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map((n) => [n, `{amber.${n}}`]),
@@ -21,5 +21,5 @@ const Pritrkovalec = definePreset(Aura, {
 // PrimeVue's dark tokens apply under class "dark", which index.html puts on <html>: the whole app is dark,
 // except the score column, which switches back to light (see styles/base.css).
 createApp(App)
-  .use(PrimeVue, { theme: { preset: Pritrkovalec, options: { darkModeSelector: '.dark' } } })
+  .use(PrimeVue, { theme: { preset: Zvonko, options: { darkModeSelector: '.dark' } } })
   .mount('#app')

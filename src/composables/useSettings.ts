@@ -28,7 +28,7 @@ export const DURATION_OPTIONS = [
   })),
 ]
 
-const KEY = 'pritrkovalec-settings'
+const KEY = 'zvonko-settings'
 
 // The player's choices, saved across reloads. Each saved value is checked before use, so an old or broken
 // entry (e.g. a piece that was since renamed) just keeps that setting's default. The piece is kept by name, not index.
@@ -61,13 +61,13 @@ export function useSettings() {
     for (const [k, [r, ok]] of Object.entries(saved)) if (ok(stored[k])) r.value = stored[k]
     const i = pieces.findIndex((p) => p.name === stored.piece)
     if (i >= 0) pieceIdx.value = i
-  } catch {} // storage blocked (private mode) or unreadable: start with defaults
+  } catch { } // storage blocked (private mode) or unreadable: start with defaults
 
   watch([pieceIdx, ...Object.values(saved).map(([r]) => r)], () => {
     const out = Object.fromEntries(Object.entries(saved).map(([k, [r]]) => [k, r.value]))
     try {
       localStorage.setItem(KEY, JSON.stringify({ ...out, piece: pieces[pieceIdx.value]!.name }))
-    } catch {}
+    } catch { }
   })
 
   return {

@@ -1,7 +1,7 @@
 {
-  "name": "Pritrkovalec",
-  "short_name": "Pritrkovalec",
-  "description": "Vadnica za pritrkovanje: melodije, zapisi in igranje zraven.",
+  "name": "Pritrkovalec Zvonko",
+  "short_name": "Zvonko",
+  "description": "Vadnica za pritrkovanje: melodije, zapisi in igranje.",
   "lang": "sl",
   "start_url": "./",
   "scope": "./",

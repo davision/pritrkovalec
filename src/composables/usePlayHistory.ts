@@ -1,6 +1,6 @@
 import { shallowRef, computed } from 'vue'
 
-const KEY = 'pritrkovalec-plays'
+const KEY = 'zvonko-plays'
 const MAX = 500 // capped so storage can't fill up
 
 export interface Play {
@@ -26,13 +26,13 @@ export function usePlayHistory() {
       plays.value = saved.filter(
         (p) => typeof p?.piece === 'string' && Number.isFinite(p.score) && Number.isFinite(p.at),
       )
-  } catch {}
+  } catch { }
 
   function add(entry: Omit<Play, 'at'>) {
     plays.value = [{ ...entry, at: Date.now() }, ...plays.value].slice(0, MAX)
     try {
       localStorage.setItem(KEY, JSON.stringify(plays.value))
-    } catch {}
+    } catch { }
   }
 
   // one entry per song, most recently played first (Map keeps the order songs are first seen in)
