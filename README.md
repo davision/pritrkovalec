@@ -49,6 +49,18 @@ npm run build    # statična stran v mapi dist/
 
 Vsebino mape `dist/` lahko objaviš na katerem koli brezplačnem statičnem gostovanju (Netlify, GitHub Pages, Cloudflare Pages). Nastavitev `base: './'` v `vite.config.js` omogoča delovanje tudi v podmapi.
 
+## Objava na zvonko.si (Node.js)
+
+```sh
+npm run deploy                 # zgradi in objavi
+SKIP_BUILD=1 npm run deploy    # objavi obstoječi dist/
+```
+
+- **Frontend** (`dist/`) gre v `~/domains/zvonko.si/public_html` in ga LiteSpeed streže neposredno (hitro, brotli, `assets/` s predpomnjenjem za eno leto).
+- **Backend** (`server.cjs`, Express) teče kot Node.js aplikacija (DirectAdmin → Node.js, CloudLinux/Passenger) v `~/zvonko`, Node 26, način Production. Dobi vse zahteve, ki niso obstoječe datoteke, npr. API pod `/api` (`/api/health`).
+- Skripta `scripts/deploy.sh` prek SSH (gostitelj `zvonko` v `~/.ssh/config`, ključ `~/.ssh/zvonko_deploy`) prenese datoteke z `rsync`, ob spremembi `package.json` požene `npm install` in znova zažene aplikacijo. Vrata SSH so dostopna le z dovoljenih IP naslovov.
+- Lokalni preizkus produkcijskega strežnika: `npm run build && node server.cjs` → http://localhost:3000.
+
 ## Zgradba
 
 ```
