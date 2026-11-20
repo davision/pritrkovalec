@@ -72,7 +72,7 @@ watch(
   currentLine,
   (l) =>
     l >= 0 &&
-    document.getElementById(`mala-${l}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    document.getElementById(`mala-${l}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
 )
 </script>
 

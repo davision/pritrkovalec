@@ -64,7 +64,7 @@ watch(
   currentRow,
   (r) =>
     r >= 0 &&
-    document.getElementById(`row-${r}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    document.getElementById(`row-${r}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
 )
 </script>
 

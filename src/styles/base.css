@@ -109,3 +109,12 @@ html .p-select-label {
     animation: none !important;
   }
 }
+
+/* score lines followed while playing (scrollIntoView, block: center): centred in the part of the screen
+   between the app bar and the docked player, not behind them */
+.mala p,
+.staff svg,
+.rows .row {
+  scroll-margin: calc(61px + env(safe-area-inset-top)) 0
+    calc(var(--player-h) + env(safe-area-inset-bottom));
+}
