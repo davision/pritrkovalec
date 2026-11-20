@@ -18,6 +18,7 @@ import { usePlayHistory } from './composables/usePlayHistory.ts'
 import { useShortcuts } from './composables/useShortcuts.ts'
 import { useBeat } from './composables/useBeat.ts'
 import { useMediaQuery } from './composables/useMediaQuery.ts'
+import { useWakeLock } from './composables/useWakeLock.ts'
 import { confetti } from './lib/confetti.ts'
 import { beatsPerBar, bellCount } from './lib/notation.ts'
 import type { Result } from './lib/score.ts'
@@ -59,6 +60,7 @@ const {
   onStart: () => started(piece.value.name),
 })
 const { stats, add: addPlay, counts, started } = usePlayHistory()
+useWakeLock(playing) // the screen stays on while the melody plays
 // visual metronome: lit dot / amber glow on every melody note while playing
 const { beat: barBeat, pulse } = useBeat(piece, current, playing)
 const perBar = computed(() => beatsPerBar(piece.value.strikes))
