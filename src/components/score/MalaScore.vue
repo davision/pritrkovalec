@@ -49,18 +49,14 @@ watch(
   currentLine,
   (l) =>
     l >= 0 &&
-    document.getElementById(`mala-${l}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+    // the line inside this score: the melody editor's preview is a second one on the page
+    root.value?.children[l]?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
 )
 </script>
 
 <template>
   <div ref="root" class="mala">
-    <p
-      v-for="(line, l) in lines"
-      :id="`mala-${l}`"
-      :key="l"
-      :style="{ '--per': rowLength(line.length, fit) }"
-    >
+    <p v-for="(line, l) in lines" :key="l" :style="{ '--per': rowLength(line.length, fit) }">
       <span v-for="(g, k) in line" :key="k" class="group">
         <span
           v-for="p in g"

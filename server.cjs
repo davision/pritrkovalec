@@ -6,7 +6,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const express = require('express')
-const { MongoClient } = require('mongodb')
+const { MongoClient, ObjectId } = require('mongodb')
 
 const app = express()
 const dist = path.join(__dirname, 'dist')
@@ -16,6 +16,7 @@ app.set('trust proxy', 'loopback') // LiteSpeed/Passenger forward from localhost
 app.use(express.json({ limit: '2kb' }))
 
 // --- database ---
+const NAMES = { locale: 'sl', strength: 1 }
 let db // resolves to the zvonko database, or null without MONGODB_URI
 function getDb() {
   if (!db) {
@@ -26,6 +27,11 @@ function getDb() {
         const d = client.db('zvonko')
         await d.collection('plays').createIndex({ at: -1 })
         await d.collection('starts').createIndex({ piece: 1, at: -1 })
+        // names are unique ignoring case and diacritics (strength 1): "Renska" = "Renška"
+        await d.collection('melodies').createIndex({ name: 1 }, { unique: true, collation: NAMES })
+        await d
+          .collection('aliases')
+          .createIndex({ piece: 1, alias: 1 }, { unique: true, collation: NAMES })
         return d
       })
       .catch((err) => {
@@ -56,6 +62,29 @@ const validStart = (b) =>
   typeof b.piece === 'string' &&
   b.piece.length > 0 &&
   b.piece.length <= 100
+const CLIENT = /^[0-9a-f-]{36}$/
+// a melody or alternative name: 1–60 characters, no control characters; returned trimmed, else null
+const cleanName = (s) =>
+  typeof s === 'string' && /^[^\p{C}]{1,60}$/u.test(s.trim()) ? s.trim().replace(/\s+/g, ' ') : null
+// a user's melody as the app's melody editor sends it (see src/lib/custom.ts)
+function validMelody(b) {
+  return (
+    b &&
+    CLIENT.test(b.client) &&
+    cleanName(b.name) &&
+    (b.bells === 3 || b.bells === 4) &&
+    Array.isArray(b.melody) &&
+    b.melody.length >= 1 &&
+    b.melody.length <= 32 &&
+    b.melody.every((n) => isInt(n, 1, b.bells)) &&
+    isInt(b.host, 1, b.bells) &&
+    isInt(b.reps, 1, 4) &&
+    typeof b.turn === 'boolean' &&
+    isInt(b.perBar, 1, 32)
+  )
+}
+const DUPLICATE = 11000 // MongoDB duplicate key: the name is taken
+
 function validPlay(b) {
   return validStart(b) && isInt(b.score, 0, 100) && isInt(b.bell, 0, 4) && isInt(b.tempo, 30, 600)
 }
@@ -87,6 +116,83 @@ api.post('/starts', rateLimit, async (req, res, next) => {
     await d.collection('starts').insertOne({ client, piece, at: new Date() })
     res.status(201).json({ ok: true })
   } catch (err) {
+    next(err)
+  }
+})
+
+// user melodies and alternative names, for everyone; `mine` marks the ones this device made (X-Client header)
+api.get('/library', async (req, res, next) => {
+  try {
+    const d = await getDb()
+    if (!d) return res.status(503).json({ error: 'No database' })
+    const client = req.get('X-Client')
+    const [melodies, aliases] = await Promise.all([
+      d.collection('melodies').find().sort({ at: 1 }).toArray(),
+      d.collection('aliases').find().sort({ at: 1 }).toArray(),
+    ])
+    res.json({
+      melodies: melodies.map(({ _id, client: owner, at: _at, ...m }) => ({
+        id: String(_id),
+        ...m,
+        mine: !!client && owner === client,
+      })),
+      aliases: aliases.map(({ piece, alias }) => ({ piece, alias })),
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+api.post('/melodies', rateLimit, async (req, res, next) => {
+  try {
+    if (!validMelody(req.body)) return res.status(400).json({ error: 'Invalid melody' })
+    const d = await getDb()
+    if (!d) return res.status(503).json({ error: 'No database' })
+    const { client, bells, melody, host, reps, turn, perBar } = req.body
+    const name = cleanName(req.body.name)
+    const doc = { name, bells, melody, host, reps, turn, perBar, client, at: new Date() }
+    const { insertedId } = await d.collection('melodies').insertOne(doc)
+    res.status(201).json({ id: String(insertedId) })
+  } catch (err) {
+    if (err.code === DUPLICATE) return res.status(409).json({ error: 'Name taken' })
+    next(err)
+  }
+})
+
+// only the device that made a melody can delete it; its alternative names go with it
+api.delete('/melodies/:id', rateLimit, async (req, res, next) => {
+  try {
+    const client = req.get('X-Client')
+    if (!CLIENT.test(client ?? '') || !ObjectId.isValid(req.params.id))
+      return res.status(400).json({ error: 'Invalid request' })
+    const d = await getDb()
+    if (!d) return res.status(503).json({ error: 'No database' })
+    const gone = await d
+      .collection('melodies')
+      .findOneAndDelete({ _id: new ObjectId(req.params.id), client })
+    if (!gone) return res.status(404).json({ error: 'Not found' })
+    await d.collection('aliases').deleteMany({ piece: gone.name })
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// another name ringers use for a piece already in the app
+api.post('/aliases', rateLimit, async (req, res, next) => {
+  try {
+    const piece = cleanName(req.body?.piece)
+    const alias = cleanName(req.body?.alias)
+    if (!CLIENT.test(req.body?.client ?? '') || !piece || !alias)
+      return res.status(400).json({ error: 'Invalid alias' })
+    const d = await getDb()
+    if (!d) return res.status(503).json({ error: 'No database' })
+    await d
+      .collection('aliases')
+      .insertOne({ piece, alias, client: req.body.client, at: new Date() })
+    res.status(201).json({ ok: true })
+  } catch (err) {
+    if (err.code === DUPLICATE) return res.status(409).json({ error: 'Name taken' })
     next(err)
   }
 })

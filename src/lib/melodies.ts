@@ -11,13 +11,14 @@ export interface Piece {
   name: string
   strikes: Strike[]
   group?: number // Po Malavašiču wraps after this many notes instead of after a bar
+  custom?: { id: string; mine: boolean } // made by a user (stored on the server); mine = on this device
 }
 
 // One full turn ("naokoli") over `bells` bells: in phase k the melody starts on bell k and bell k + host
 // "hosts" with an x between every melody note (default -1: the bell before k). Bells the melody and host
 // don't reach wait (Tri dva ena na štiri: bell k + 3). melody = bell offsets from k, played `reps`
 // times per phase. Notes are numbered 1..perBar within each bar (default: the melody is one bar).
-function turn(
+export function turn(
   melody: number[],
   { reps = 2, accent = false, bells = 4, perBar = melody.length, host = -1 } = {},
 ): Strike[] {

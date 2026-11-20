@@ -13,6 +13,7 @@ import TrackScore from './components/score/TrackScore.vue'
 import GridScore from './components/score/GridScore.vue'
 import MelodyPicker from './components/MelodyPicker.vue'
 import { useSettings, DURATION_OPTIONS } from './composables/useSettings.ts'
+import { useLibrary } from './composables/useLibrary.ts'
 import { usePlayer } from './composables/usePlayer.ts'
 import { usePlayHistory } from './composables/usePlayHistory.ts'
 import { useShortcuts } from './composables/useShortcuts.ts'
@@ -25,9 +26,10 @@ import type { Result } from './lib/score.ts'
 
 // The page: app bar, settings and statistics panels, melody picker, score and the docked player.
 // It connects the pieces; playback lives in usePlayer, the saved choices in useSettings.
-const settings = useSettings()
+const library = useLibrary() // built-in and user melodies
+const settings = useSettings(library.all)
 const {
-  pieceIdx,
+  pieceName,
   view,
   practice,
   tempoIdx,
@@ -146,9 +148,13 @@ const scoreProps = computed(() => ({
         <div class="field inline piece-field">
           <label id="piece-label">Melodija</label>
           <MelodyPicker
-            v-model:piece-idx="pieceIdx"
+            v-model:piece-name="pieceName"
             v-model:favorites="favorites"
+            :library="library"
             :counts="counts"
+            :rpm="rpm"
+            :host-volume="hostVolume"
+            @opened="playing && toggle()"
           />
         </div>
         <div class="field inline">

@@ -65,7 +65,13 @@ add first-strike checks to `melodies.test.ts`, run `npm test`. README has the fu
   paths, i.e. `/api/*`: `/api/health`, `POST /api/plays` (validated, rate-limited per IP), `GET /api/popular?days=30`.
   Plays go to MongoDB Atlas (db `zvonko`, collection `plays`); `MONGODB_URI` is set in DirectAdmin's Node.js app
   settings, never in the repo. The client reports each scored play fire-and-forget with an anonymous device id
-  (`usePlayHistory.ts`); without the API (GitHub Pages, offline) the app works on localStorage alone. The deploy script never touches the hosting's `.htaccess`
+  (`usePlayHistory.ts`); without the API (GitHub Pages, offline) the app works on localStorage alone.
+- User melodies (beta): `src/lib/custom.ts` turns a `MelodyDef` (bells, first-round line, hosting bell, repeats,
+  turn, notes per bar) into strikes with `turn()`, and `findSame()` detects a melody already in the app (then the
+  editor saves the name as an alternative name instead). Server: `GET /api/library` (melodies + aliases, `mine`
+  via the `X-Client` header), `POST /api/melodies`, `DELETE /api/melodies/:id` (creator only), `POST /api/aliases`;
+  names unique ignoring case and diacritics. `useLibrary.ts` merges them with the built-in `pieces`; settings keep
+  the chosen piece by name. The deploy script never touches the hosting's `.htaccess`
   outside its `# ZVONKO BEGIN/END` block; it restarts the app via `tmp/restart.txt`.
 
 ## Gotchas

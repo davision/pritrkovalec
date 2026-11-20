@@ -1,5 +1,5 @@
 import { shallowRef, computed, watch, type Ref } from 'vue'
-import { pieces } from '../lib/melodies.ts'
+import { pieces, type Piece } from '../lib/melodies.ts'
 import { bellCount } from '../lib/notation.ts'
 
 export const TEMPOS = [150, 180, 210, 230] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
@@ -39,9 +39,10 @@ export const DURATION_OPTIONS = [
 const KEY = 'zvonko-settings'
 
 // The player's choices, saved across reloads. Each saved value is checked before use, so an old or broken
-// entry (e.g. a piece that was since renamed) just keeps that setting's default. The piece is kept by name, not index.
-export function useSettings() {
-  const pieceIdx = shallowRef(0)
+// entry (e.g. a piece that was since renamed) just keeps that setting's default. The piece is kept by name,
+// looked up in `all` (built-in and user melodies): a user melody loading after the start is still found.
+export function useSettings(all: Ref<Piece[]> = shallowRef(pieces)) {
+  const pieceName = shallowRef(pieces[0]!.name)
   const view = shallowRef<View>('mala') // score style
   const practice = shallowRef(-1) // muted bell the player rings, -1 = none
   const tempoIdx = shallowRef(TEMPOS.indexOf(180))
@@ -73,28 +74,29 @@ export function useSettings() {
   try {
     const stored = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}
     for (const [k, [r, ok]] of Object.entries(saved)) if (ok(stored[k])) r.value = stored[k]
-    const i = pieces.findIndex((p) => p.name === stored.piece)
-    if (i >= 0) pieceIdx.value = i
+    if (typeof stored.piece === 'string') pieceName.value = stored.piece
   } catch {} // storage blocked (private mode) or unreadable: start with defaults
 
   // a piece with fewer bells (Renška): the chosen bell may not exist in it, then all bells play
+  // an unknown name (renamed or deleted piece, or a user melody not loaded yet) plays the first piece
+  const piece = computed(() => all.value.find((p) => p.name === pieceName.value) ?? all.value[0]!)
   watch(
-    pieceIdx,
-    (i) => {
-      if (practice.value >= bellCount(pieces[i]!.strikes)) practice.value = -1
+    piece,
+    (p) => {
+      if (practice.value >= bellCount(p.strikes)) practice.value = -1
     },
     { immediate: true },
   )
 
-  watch([pieceIdx, ...Object.values(saved).map(([r]) => r)], () => {
+  watch([pieceName, ...Object.values(saved).map(([r]) => r)], () => {
     const out = Object.fromEntries(Object.entries(saved).map(([k, [r]]) => [k, r.value]))
     try {
-      localStorage.setItem(KEY, JSON.stringify({ ...out, piece: pieces[pieceIdx.value]!.name }))
+      localStorage.setItem(KEY, JSON.stringify({ ...out, piece: pieceName.value }))
     } catch {}
   })
 
   return {
-    pieceIdx,
+    pieceName,
     view,
     practice,
     tempoIdx,
@@ -104,7 +106,7 @@ export function useSettings() {
     beatView,
     minutes,
     favorites,
-    piece: computed(() => pieces[pieceIdx.value]!),
+    piece,
     rpm: computed(() => TEMPOS[tempoIdx.value]!),
   }
 }

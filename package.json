@@ -7,7 +7,7 @@
     "server": "node --env-file-if-exists=atlas-credentials.env --watch server.cjs",
     "build": "vue-tsc --build && vite build",
     "preview": "vite preview",
-    "test": "node src/lib/melodies.test.ts && node src/lib/score.test.ts && node src/lib/notation.test.ts",
+    "test": "node src/lib/melodies.test.ts && node src/lib/score.test.ts && node src/lib/notation.test.ts && node src/lib/custom.test.ts",
     "type-check": "vue-tsc --build",
     "lint": "oxlint",
     "format": "prettier --write src/",

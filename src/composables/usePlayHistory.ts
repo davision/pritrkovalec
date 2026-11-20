@@ -18,7 +18,7 @@ export interface SongStats {
 }
 
 // Anonymous random id of this device, so the server can count players without accounts.
-function clientId() {
+export function clientId() {
   try {
     let id = localStorage.getItem(CLIENT_KEY)
     if (!id) localStorage.setItem(CLIENT_KEY, (id = crypto.randomUUID()))
