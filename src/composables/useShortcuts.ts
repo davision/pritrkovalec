@@ -15,6 +15,8 @@ export function useShortcuts(actions: ShortcutActions) {
   const plain = (e: KeyboardEvent) => e.type === 'keydown' && !e.metaKey && !e.ctrlKey
 
   function onKey(e: KeyboardEvent) {
+    // an open dialog keeps its own keys (Space/Enter on its buttons, Esc closes it)
+    if (document.querySelector('.p-dialog-mask')) return
     if (e.code === 'Escape' && e.type === 'keydown') return actions.escape()
     // 1–4 picks the bell to play along, 0 = all bells play
     if (/^Digit[0-4]$/.test(e.code) && plain(e)) {

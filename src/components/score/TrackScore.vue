@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
-import { barLen } from '../../lib/notation.ts'
+import { barLen, bellCount } from '../../lib/notation.ts'
 import type { Piece } from '../../lib/melodies.ts'
 import BellButtons from './BellButtons.vue'
 import './grid.css'
@@ -36,6 +36,7 @@ const tapeBars = computed(() => {
   const len = barLen(props.piece.strikes)
   return tape.value.filter((s) => s.j && s.j % len === 0).map((s) => s.j)
 })
+const bells = computed(() => bellCount(props.piece.strikes))
 const currentBell = computed(() => props.piece.strikes[props.current]?.bell ?? -1)
 
 // set imperatively every frame: binding it through Vue would re-render the whole score 60× a second
@@ -69,7 +70,7 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
 
 <template>
   <div class="ticker">
-    <BellButtons :flash="flash" @ring="emit('ring', $event)" />
+    <BellButtons :bells="bells" :flash="flash" @ring="emit('ring', $event)" />
     <div class="ticker-window">
       <div
         ref="strip"
@@ -77,11 +78,12 @@ onBeforeUnmount(() => cancelAnimationFrame(raf))
         :style="{ gridTemplateColumns: `repeat(${tape.length}, ${COL}px)` }"
       >
         <div
-          v-for="b in 4"
+          v-for="b in bells"
           :key="b"
           class="line"
           :class="[
             `b${b - 1}`,
+            { last: b === bells },
             { now: currentBell === b - 1, mine: practice === b - 1, hit: flash === b - 1 },
           ]"
           :style="{ gridRow: b }"

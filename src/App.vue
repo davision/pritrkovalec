@@ -11,14 +11,15 @@ import MalaScore from './components/score/MalaScore.vue'
 import StaffScore from './components/score/StaffScore.vue'
 import TrackScore from './components/score/TrackScore.vue'
 import GridScore from './components/score/GridScore.vue'
-import { useSettings, PIECE_OPTIONS, DURATION_OPTIONS } from './composables/useSettings.ts'
+import MelodyPicker from './components/MelodyPicker.vue'
+import { useSettings, DURATION_OPTIONS } from './composables/useSettings.ts'
 import { usePlayer } from './composables/usePlayer.ts'
 import { usePlayHistory } from './composables/usePlayHistory.ts'
 import { useShortcuts } from './composables/useShortcuts.ts'
 import { useBeat } from './composables/useBeat.ts'
 import { useMediaQuery } from './composables/useMediaQuery.ts'
 import { confetti } from './lib/confetti.ts'
-import { beatsPerBar } from './lib/notation.ts'
+import { beatsPerBar, bellCount } from './lib/notation.ts'
 import type { Result } from './lib/score.ts'
 
 // The page: app bar, settings and statistics panels, melody picker, score and the docked player.
@@ -34,6 +35,7 @@ const {
   metronome,
   beatView,
   minutes,
+  favorites,
   piece,
   rpm,
 } = settings
@@ -52,11 +54,15 @@ const {
   ring,
   tap,
   finish,
-} = usePlayer(settings, { onTimeUp: () => stopAndScore() })
-const { stats, add: addPlay } = usePlayHistory()
+} = usePlayer(settings, {
+  onTimeUp: () => stopAndScore(),
+  onStart: () => started(piece.value.name),
+})
+const { stats, add: addPlay, counts, started } = usePlayHistory()
 // visual metronome: lit dot / amber glow on every melody note while playing
 const { beat: barBeat, pulse } = useBeat(piece, current, playing)
 const perBar = computed(() => beatsPerBar(piece.value.strikes))
+const bells = computed(() => bellCount(piece.value.strikes))
 const showDots = computed(() => beatView.value === 'dots' || beatView.value === 'both')
 const showGlow = computed(() => beatView.value === 'glow' || beatView.value === 'both')
 
@@ -82,7 +88,7 @@ useShortcuts({
     showSettings.value || showStats.value
       ? (showSettings.value = showStats.value = false)
       : stopAndScore(),
-  bell: (b) => (practice.value = b),
+  bell: (b) => b < bells.value && (practice.value = b), // no bell 4 in a 3-bell piece
   toggleWait: () => (waitForMe.value = !waitForMe.value),
   toggleMetronome: () => (metronome.value = !metronome.value),
   togglePlay: toggle,
@@ -90,7 +96,10 @@ useShortcuts({
   tap,
 })
 
-const scoreStyle = computed(() => ({ '--host-opacity': 0.25 + (0.75 * hostVolume.value) / 100 }))
+const scoreStyle = computed(() => ({
+  '--bells': bells.value,
+  '--host-opacity': 0.25 + (0.75 * hostVolume.value) / 100,
+}))
 const scoreProps = computed(() => ({
   piece: piece.value,
   current: current.value,
@@ -134,13 +143,10 @@ const scoreProps = computed(() => ({
       <section class="controls">
         <div class="field inline piece-field">
           <label id="piece-label">Melodija</label>
-          <Select
-            v-model="pieceIdx"
-            class="piece-select"
-            :options="PIECE_OPTIONS"
-            option-label="label"
-            option-value="value"
-            aria-labelledby="piece-label"
+          <MelodyPicker
+            v-model:piece-idx="pieceIdx"
+            v-model:favorites="favorites"
+            :counts="counts"
           />
         </div>
         <div class="field inline">
@@ -178,6 +184,7 @@ const scoreProps = computed(() => ({
 
       <PlayerBar
         v-model:practice="practice"
+        :bells="bells"
         :playing="playing"
         :can-stop="playing || current >= 0"
         :waiting="waiting >= 0"
@@ -300,10 +307,6 @@ main {
   flex: 1 1 260px;
   max-width: 520px;
 }
-.piece-field .p-select {
-  flex: 1;
-  min-width: 0;
-}
 /* phones: both pickers on one line without their labels (still read out by screen readers) */
 @media (max-width: 767px) {
   .controls {
@@ -330,9 +333,6 @@ main {
     clip-path: inset(50%);
     white-space: nowrap;
   }
-}
-.piece-select .p-select-label {
-  font-weight: 700;
 }
 /* the pickers are the only PrimeVue controls on white: light colours by hand, a soft grey fill */
 .controls .p-select {

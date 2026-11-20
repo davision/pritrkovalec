@@ -34,4 +34,42 @@ assert.deepEqual(
   ['1', 'x', '2', 'x', '3', 'x', '4', 'x', '1', 'x'],
 )
 
+// Renška: 3 bells only; 1 2 1 2 1 1 1 2 with bell 3 hosting, twice, then bell 2 starts with bell 1 hosting
+const renska = pieces.find((p) => p.name === 'Renška')!
+assert.deepEqual(bells(renska.strikes, 0, 16), [1, 3, 2, 3, 1, 3, 2, 3, 1, 3, 1, 3, 1, 3, 2, 3])
+assert.deepEqual(bells(renska.strikes, 16, 2), [1, 3]) // second repetition
+assert.deepEqual(bells(renska.strikes, 32, 4), [2, 1, 3, 1])
+assert.deepEqual(bells(renska.strikes, 64, 4), [3, 2, 1, 2])
+assert.equal(renska.strikes.length, 96) // 3 phases × 2 reps × 16 strikes
+assert.ok(renska.strikes.every((s) => s.bell < 3))
+// two 4/4 bars: notes numbered 1–4, 1–4
+assert.deepEqual(
+  renska.strikes
+    .slice(0, 16)
+    .filter((s) => s.label !== 'x')
+    .map((s) => s.label),
+  ['1', '2', '3', '4', '1', '2', '3', '4'],
+)
+
+// Tri dva ena on 3 bells: 1 1 1 2 1 1 2 1 2 with bell 3 hosting, once, then bell 2 starts with bell 1 hosting
+const tde = pieces.find((p) => p.name === 'Tri dva ena')!
+assert.deepEqual(bells(tde.strikes, 0, 18), [1, 3, 1, 3, 1, 3, 2, 3, 1, 3, 1, 3, 2, 3, 1, 3, 2, 3])
+assert.deepEqual(bells(tde.strikes, 18, 8), [2, 1, 2, 1, 2, 1, 3, 1])
+assert.deepEqual(bells(tde.strikes, 36, 8), [3, 2, 3, 2, 3, 2, 1, 2])
+assert.equal(tde.strikes.length, 54) // 3 phases × 9 notes × 2
+
+// Tri dva ena na štiri: the same line on 4 bells; bell 3 hosts and bell 4 waits, then it turns over all 4
+const tde4 = pieces.find((p) => p.name === 'Tri dva ena na štiri')!
+assert.deepEqual(bells(tde4.strikes, 0, 8), [1, 3, 1, 3, 1, 3, 2, 3])
+assert.deepEqual(bells(tde4.strikes, 18, 8), [2, 4, 2, 4, 2, 4, 3, 4])
+assert.deepEqual(bells(tde4.strikes, 54, 8), [4, 2, 4, 2, 4, 2, 1, 2])
+assert.equal(tde4.strikes.length, 72) // 4 phases × 9 notes × 2
+
+// 1 1 2 2 on 3 bells, bell 3 hosting, twice per bell, then it turns
+const dd = pieces.find((p) => p.name === 'Enkt dvakt')!
+assert.deepEqual(bells(dd.strikes, 0, 16), [1, 3, 1, 3, 2, 3, 2, 3, 1, 3, 1, 3, 2, 3, 2, 3])
+assert.deepEqual(bells(dd.strikes, 16, 8), [2, 1, 2, 1, 3, 1, 3, 1])
+assert.deepEqual(bells(dd.strikes, 32, 8), [3, 2, 3, 2, 1, 2, 1, 2])
+assert.equal(dd.strikes.length, 48) // 3 phases × 2 reps × 8 strikes
+
 console.log('melodies ok')

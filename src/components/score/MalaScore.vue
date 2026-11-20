@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { beatsPerBar, pairLines, groups, type Pair } from '../../lib/notation.ts'
+import { computed, watch, shallowRef, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
+import { beatsPerBar, pairLines, groups, rowLength, type Pair } from '../../lib/notation.ts'
 import type { Piece } from '../../lib/melodies.ts'
 
 // Po Malavašiču: big handwritten-style digits, each melody note with its hosting bell as a superscript.
@@ -13,6 +13,30 @@ const lines = computed(() =>
     groups(line, props.piece.group ?? perBar.value),
   ),
 )
+// how many groups fit side by side in the score column, measured from the widest group; a line that doesn't
+// fit is split into equal rows (rowLength). Infinity until measured: every line on one row.
+const root = useTemplateRef<HTMLDivElement>('root')
+const fit = shallowRef(Infinity)
+function measure() {
+  const box = root.value?.parentElement // the .score section: the room there is
+  const p = root.value?.querySelector('p')
+  if (!box || !p) return
+  const style = getComputedStyle(box)
+  const room = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+  const gap = parseFloat(getComputedStyle(p).columnGap) || 0
+  const widest = Math.max(
+    ...[...root.value!.querySelectorAll<HTMLElement>('.group')].map((g) => g.offsetWidth),
+  )
+  fit.value = Math.floor((room + gap) / (widest + gap))
+}
+let observer: ResizeObserver | undefined
+onMounted(() => {
+  observer = new ResizeObserver(measure)
+  observer.observe(root.value!.parentElement!)
+})
+onBeforeUnmount(() => observer?.disconnect())
+watch(() => props.piece, measure, { flush: 'post' })
+
 // the melody note, then its hosting strike when it has one
 const notesOf = (p: Pair) => (p.host ? [p.lead, p.host] : [p.lead])
 const currentLine = computed(() =>
@@ -30,8 +54,13 @@ watch(
 </script>
 
 <template>
-  <div class="mala">
-    <p v-for="(line, l) in lines" :id="`mala-${l}`" :key="l">
+  <div ref="root" class="mala">
+    <p
+      v-for="(line, l) in lines"
+      :id="`mala-${l}`"
+      :key="l"
+      :style="{ '--per': rowLength(line.length, fit) }"
+    >
       <span v-for="(g, k) in line" :key="k" class="group">
         <span
           v-for="p in g"
@@ -77,12 +106,12 @@ div.mala {
   justify-content: center;
   padding: 8px 0 16px;
 }
-/* a line breaks only between groups (bars), never inside one */
+/* a line breaks only between groups (bars), never inside one, into equal rows of --per groups (see fit) */
 .mala p {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(var(--per), max-content);
   justify-content: center;
-  gap: 0 0.6em;
+  gap: 0 0.3em;
   margin: 0 0 0.35em;
   font:
     500 clamp(32px, 9vw, 44px)/1.5 Georgia,

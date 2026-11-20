@@ -1,8 +1,8 @@
 import { shallowRef, computed, watch, type Ref } from 'vue'
 import { pieces } from '../lib/melodies.ts'
+import { bellCount } from '../lib/notation.ts'
 
 export const TEMPOS = [150, 180, 210, 230] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
-export const PIECE_OPTIONS = pieces.map((p, i) => ({ label: p.name, value: i }))
 export type View = 'drum' | 'mala' | 'staff' | 'simple'
 export const VIEW_OPTIONS: { label: string; value: View }[] = [
   { label: 'Bobnarske note', value: 'drum' },
@@ -50,6 +50,7 @@ export function useSettings() {
   const metronome = shallowRef(false) // tick on every melody note, accented on the first beat of the bar
   const beatView = shallowRef<BeatView>('both') // how the beat is shown while playing
   const minutes = shallowRef(0) // play for this many minutes, then stop; 0 = until stopped
+  const favorites = shallowRef<string[]>([]) // starred pieces, by name; shown first in the melody picker
 
   // each saved setting with the check its stored value must pass
   const saved: Record<string, [Ref<unknown>, (v: unknown) => boolean]> = {
@@ -67,6 +68,7 @@ export function useSettings() {
     metronome: [metronome, (v) => typeof v === 'boolean'],
     beatView: [beatView, (v) => BEAT_VIEW_OPTIONS.some((o) => o.value === v)],
     minutes: [minutes, (v) => DURATION_OPTIONS.some((o) => o.value === v)],
+    favorites: [favorites, (v) => Array.isArray(v) && v.every((n) => typeof n === 'string')],
   }
   try {
     const stored = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}
@@ -74,6 +76,15 @@ export function useSettings() {
     const i = pieces.findIndex((p) => p.name === stored.piece)
     if (i >= 0) pieceIdx.value = i
   } catch {} // storage blocked (private mode) or unreadable: start with defaults
+
+  // a piece with fewer bells (Renška): the chosen bell may not exist in it, then all bells play
+  watch(
+    pieceIdx,
+    (i) => {
+      if (practice.value >= bellCount(pieces[i]!.strikes)) practice.value = -1
+    },
+    { immediate: true },
+  )
 
   watch([pieceIdx, ...Object.values(saved).map(([r]) => r)], () => {
     const out = Object.fromEntries(Object.entries(saved).map(([k, [r]]) => [k, r.value]))
@@ -92,6 +103,7 @@ export function useSettings() {
     metronome,
     beatView,
     minutes,
+    favorites,
     piece: computed(() => pieces[pieceIdx.value]!),
     rpm: computed(() => TEMPOS[tempoIdx.value]!),
   }

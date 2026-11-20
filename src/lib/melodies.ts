@@ -13,20 +13,25 @@ export interface Piece {
   group?: number // Po Malavašiču wraps after this many notes instead of after a bar
 }
 
-// One full turn ("naokoli"): in phase k the melody starts on bell k and bell k+3 "hosts"
-// with an x between every melody note. melody = bell offsets from k, played `reps` times per phase.
-function turn(melody: number[], { reps = 2, accent = false } = {}): Strike[] {
+// One full turn ("naokoli") over `bells` bells: in phase k the melody starts on bell k and bell k + host
+// "hosts" with an x between every melody note (default -1: the bell before k). Bells the melody and host
+// don't reach wait (Tri dva ena na štiri: bell k + 3). melody = bell offsets from k, played `reps`
+// times per phase. Notes are numbered 1..perBar within each bar (default: the melody is one bar).
+function turn(
+  melody: number[],
+  { reps = 2, accent = false, bells = 4, perBar = melody.length, host = -1 } = {},
+): Strike[] {
   const strikes: Strike[] = []
-  for (let k = 0; k < 4; k++) {
-    const host = (k + 3) % 4
+  for (let k = 0; k < bells; k++) {
+    const hostBell = (k + host + bells) % bells
     for (let r = 0; r < reps; r++)
       melody.forEach((off, i) => {
         strikes.push({
-          bell: (k + off) % 4,
-          label: String(i + 1),
+          bell: (k + off) % bells,
+          label: String((i % perBar) + 1),
           accent: accent && r === 0 && i === 0,
         })
-        strikes.push({ bell: host, label: 'x', accent: false })
+        strikes.push({ bell: hostBell, label: 'x', accent: false })
       })
   }
   return strikes
@@ -50,7 +55,9 @@ const PO_PET_NAVADNA = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2, 1, 3, 3,
 const PO_PET = [0, 2, 2, 2, 0, 2, 2, 2, 0, 2, 0, 2, 0, 2, 2, 2]
 // 4 bars hosted by bell 4, 4 bars by bell 3; then the whole figure mirrored so bell 1 hosts first (4 2 2 2| …)
 const PO_PET_HOSTS = PO_PET_NAVADNA.map((_, i) => (i < 16 ? 3 : 2))
-const TRI_DVA_ENA = [0, 0, 0, 2, 0, 0, 2, 0, 2]
+const TRI_DVA_ENA = [0, 0, 0, 1, 0, 0, 1, 0, 1] // 1 1 1 2 1 1 2 1 2, bell 3 hosting
+const ENKT_DVAKT = [0, 0, 1, 1] // 1 1 2 2, bell 3 hosting
+const RENSKA = [0, 1, 0, 1, 0, 0, 0, 1] // 1 2 1 2 1 1 1 2, bell 3 hosting
 
 export const pieces: Piece[] = [
   { name: 'Mercinova naokoli', strikes: turn(MERCINOVA) },
@@ -69,8 +76,21 @@ export const pieces: Piece[] = [
     group: 4, // Po Malavašiču wraps after every 4 notes (0 2 2 2 | …)
   },
   {
-    name: 'Tri dva ena',
-    strikes: turn(TRI_DVA_ENA, { reps: 1 }),
+    name: 'Tri dva ena na štiri',
+    strikes: turn(TRI_DVA_ENA, { reps: 1, host: 2 }), // bell 4 waits, then the next bell
     group: 3, // 3 + 3 + 3
+  },
+  {
+    name: 'Renška',
+    strikes: turn(RENSKA, { bells: 3, perBar: 4 }), // two 4/4 bars per line
+  },
+  {
+    name: 'Tri dva ena',
+    strikes: turn(TRI_DVA_ENA, { reps: 1, bells: 3 }),
+    group: 3, // 3 + 3 + 3
+  },
+  {
+    name: 'Enkt dvakt',
+    strikes: turn(ENKT_DVAKT, { bells: 3 }),
   },
 ]

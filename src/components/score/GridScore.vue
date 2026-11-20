@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch, shallowRef, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
-import { barLen } from '../../lib/notation.ts'
+import { barLen, bellCount } from '../../lib/notation.ts'
 import type { Piece, Strike } from '../../lib/melodies.ts'
 import BellButtons from './BellButtons.vue'
 import './grid.css'
@@ -57,6 +57,7 @@ const rows = computed(() => {
   return out
 })
 const currentRow = computed(() => (props.current < 0 ? -1 : Math.floor(props.current / cols.value)))
+const bells = computed(() => bellCount(props.piece.strikes))
 const currentBell = computed(() => props.piece.strikes[props.current]?.bell ?? -1)
 
 watch(
@@ -76,15 +77,16 @@ watch(
       class="row"
       :class="{ active: r === currentRow }"
     >
-      <BellButtons :flash="flash" @ring="emit('ring', $event)" />
+      <BellButtons :bells="bells" :flash="flash" @ring="emit('ring', $event)" />
       <!-- fixed-size cells: a shorter last row ends after its last bar, aligned to the rows above -->
       <div class="grid" :style="{ gridTemplateColumns: `repeat(${row.length}, var(--cell))` }">
         <div
-          v-for="b in 4"
+          v-for="b in bells"
           :key="b"
           class="line"
           :class="[
             `b${b - 1}`,
+            { last: b === bells },
             {
               now: r === currentRow && currentBell === b - 1,
               mine: practice === b - 1,

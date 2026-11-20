@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { beatsPerBar, pairLines, type IndexedStrike, type Pair } from '../../lib/notation.ts'
+import {
+  beatsPerBar,
+  bellCount,
+  pairLines,
+  type IndexedStrike,
+  type Pair,
+} from '../../lib/notation.ts'
 import type { Piece } from '../../lib/melodies.ts'
 import '@fontsource/bravura' // SMuFL music font (SIL OFL) for the staff glyphs
 
@@ -40,7 +46,9 @@ const STAFF_H = 176
 const perBar = computed(() => beatsPerBar(props.piece.strikes))
 const lines = computed(() => pairLines(props.piece.strikes, perBar.value))
 const gap = computed(() => (props.simple ? 22 : SP)) // simplified staff has wider line spacing, same note size
-const lineY = (bell: number) => ST.top + (props.simple ? bell : 3 - bell) * gap.value
+const bells = computed(() => bellCount(props.piece.strikes))
+const span = computed(() => (bells.value - 1) * gap.value) // top line to bottom line
+const lineY = (bell: number) => ST.top + (props.simple ? bell : bells.value - 1 - bell) * gap.value
 const barX = (m: number) => ST.x0 + m * (perBar.value * ST.beat + ST.pad)
 const beatX = (k: number) =>
   barX(Math.floor(k / perBar.value)) + ST.pad + (k % perBar.value) * ST.beat
@@ -76,15 +84,15 @@ watch(
       :key="l"
       :viewBox="
         simple
-          ? `0 ${ST.top - 30} ${staffWidth(line) + 20} ${3 * gap + 54}`
+          ? `0 ${ST.top - 30} ${staffWidth(line) + 20} ${span + 54}`
           : `0 0 ${staffWidth(line)} ${STAFF_H}`
       "
       :width="staffWidth(line) + (simple ? 20 : 0)"
-      :height="simple ? 3 * gap + 54 : STAFF_H"
+      :height="simple ? span + 54 : STAFF_H"
     >
       <!-- poenostavljen: bell numbers left of the lines, practice bell's line in yellow -->
       <template v-if="simple">
-        <text v-for="b in 4" :key="b" class="num" x="8" :y="lineY(b - 1) + 5">{{ b }}</text>
+        <text v-for="b in bells" :key="b" class="num" x="8" :y="lineY(b - 1) + 5">{{ b }}</text>
         <rect
           v-if="practice >= 0"
           class="mine-bg"
@@ -97,20 +105,20 @@ watch(
       </template>
       <g :transform="simple ? 'translate(20 0)' : undefined">
         <rect
-          v-for="k in 4"
+          v-for="k in bells"
           :key="k"
           x="4"
           :y="ST.top + (k - 1) * gap - 0.8"
           :width="staffWidth(line) - 8"
           height="1.6"
         />
-        <text class="smufl" x="12" :y="ST.top + 1.5 * gap">{{ G.percClef }}</text>
+        <text class="smufl" x="12" :y="ST.top + span / 2">{{ G.percClef }}</text>
         <template v-if="l === 0">
           <text
             class="smufl timesig"
             :style="simple && { fontSize: '54px' }"
             x="42"
-            :y="ST.top + 0.75 * gap"
+            :y="ST.top + span / 2 - 0.75 * gap"
           >
             {{ G.digit(perBar) }}
           </text>
@@ -118,7 +126,7 @@ watch(
             class="smufl timesig"
             :style="simple && { fontSize: '54px' }"
             x="42"
-            :y="ST.top + 2.25 * gap"
+            :y="ST.top + span / 2 + 0.75 * gap"
           >
             {{ G.digit(4) }}
           </text>
@@ -200,16 +208,16 @@ watch(
           :x="barX(m) - 1"
           :y="ST.top"
           width="1.9"
-          :height="3 * gap"
+          :height="span"
         />
         <template v-if="l === lines.length - 1">
           <!-- end repeat: dots, thin and thick barline -->
           <circle :cx="staffWidth(line) - 24" :cy="ST.top + 0.5 * gap" r="2.2" />
-          <circle :cx="staffWidth(line) - 24" :cy="ST.top + 2.5 * gap" r="2.2" />
-          <rect :x="staffWidth(line) - 18" :y="ST.top" width="1.9" :height="3 * gap" />
-          <rect :x="staffWidth(line) - 13" :y="ST.top" width="6" :height="3 * gap" />
+          <circle :cx="staffWidth(line) - 24" :cy="ST.top + span - 0.5 * gap" r="2.2" />
+          <rect :x="staffWidth(line) - 18" :y="ST.top" width="1.9" :height="span" />
+          <rect :x="staffWidth(line) - 13" :y="ST.top" width="6" :height="span" />
         </template>
-        <rect v-else :x="staffWidth(line) - 9" :y="ST.top" width="1.9" :height="3 * gap" />
+        <rect v-else :x="staffWidth(line) - 9" :y="ST.top" width="1.9" :height="span" />
       </g>
     </svg>
   </div>

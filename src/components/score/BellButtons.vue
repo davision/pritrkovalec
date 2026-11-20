@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// Bell numbers 1–4 down the side of a score; clicking one rings that bell.
-const { flash = -1 } = defineProps<{
+// Bell numbers 1–n down the side of a score; clicking one rings that bell.
+const { flash = -1, bells = 4 } = defineProps<{
+  bells?: number // how many the piece uses
   flash?: number // bell just rung, briefly highlighted
 }>()
 const emit = defineEmits<{ ring: [bell: number] }>()
@@ -9,7 +10,7 @@ const emit = defineEmits<{ ring: [bell: number] }>()
 <template>
   <div class="bell-nums">
     <button
-      v-for="b in 4"
+      v-for="b in bells"
       :key="b"
       :class="[`b${b - 1}`, { hit: flash === b - 1 }]"
       :aria-label="`Udari zvon ${b}`"
@@ -23,7 +24,10 @@ const emit = defineEmits<{ ring: [bell: number] }>()
 <style>
 .bell-nums {
   display: grid;
-  grid-template-rows: repeat(4, var(--cell, 23px)); /* lines up with the score's lanes */
+  grid-template-rows: repeat(
+    var(--bells, 4),
+    var(--cell, 23px)
+  ); /* lines up with the score's lanes */
   align-self: start;
 }
 .bell-nums button {

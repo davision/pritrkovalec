@@ -16,6 +16,7 @@ const {
   flash = -1,
   timed = false,
   progress,
+  bells = 4,
 } = defineProps<{
   playing?: boolean
   canStop?: boolean
@@ -23,6 +24,7 @@ const {
   flash?: number // bell just rung, briefly highlighted
   timed?: boolean // a playing time is chosen: show the time bar
   progress: () => number // share of the playing time used, 0–1, read every frame
+  bells?: number // how many the piece uses: only those can be picked
 }>()
 const practice = defineModel<number>('practice', { required: true })
 const emit = defineEmits<{ prev: []; toggle: []; tap: []; stop: []; next: [] }>()
@@ -138,7 +140,7 @@ function choose() {
       <p class="bell-picker-title">Igram zvon</p>
       <SelectButton
         v-model="practice"
-        :options="BELL_OPTIONS"
+        :options="BELL_OPTIONS.filter((o) => o.value < bells)"
         option-label="label"
         option-value="value"
         :allow-empty="false"

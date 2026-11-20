@@ -1,7 +1,15 @@
 // Run: npm test
 import assert from 'node:assert/strict'
 import { pieces, type Piece } from './melodies.ts'
-import { beatsPerBar, barLen, pairLines, groups, countInBeats } from './notation.ts'
+import {
+  beatsPerBar,
+  barLen,
+  bellCount,
+  pairLines,
+  groups,
+  countInBeats,
+  rowLength,
+} from './notation.ts'
 
 const [mercinova, stirka] = pieces as [Piece, Piece, ...Piece[]]
 assert.equal(beatsPerBar(mercinova.strikes), 3)
@@ -36,7 +44,29 @@ assert.deepEqual(countIns, {
   'Mercinova naokoli; s poudarki (variacija)': 3,
   'Po pet (navadna)': 4,
   'Po pet naokoli': 4,
+  'Tri dva ena na štiri': 3,
+  Renška: 4,
   'Tri dva ena': 3,
+  'Enkt dvakt': 4,
 })
+
+// bells a piece uses: only the 3-bell pieces leave out bell 4
+assert.deepEqual(
+  pieces.filter((p) => bellCount(p.strikes) !== 4).map((p) => [p.name, bellCount(p.strikes)]),
+  [
+    ['Renška', 3],
+    ['Tri dva ena', 3],
+    ['Enkt dvakt', 3],
+  ],
+)
+
+// Malavašič rows: equal rows when a line doesn't fit
+assert.equal(rowLength(3, 3), 3) // fits
+assert.equal(rowLength(3, 2), 1) // 1 + 1 + 1, not 2 + 1
+assert.equal(rowLength(4, 3), 2) // 2 + 2
+assert.equal(rowLength(4, 2), 2)
+assert.equal(rowLength(5, 4), 3) // no equal split near: 3 + 2
+assert.equal(rowLength(2, 0), 1) // even one group is too wide: one per row
+assert.equal(rowLength(3, Infinity), 3) // not measured yet
 
 console.log('notation ok')

@@ -19,6 +19,7 @@ export interface PlayerSettings {
 }
 export interface PlayerOptions {
   onTimeUp?: () => void // the chosen playing time is over and the melody reached its end (the caller stops and scores)
+  onStart?: () => void // the melody starts from the beginning (not resuming after a pause): counted as a play
 }
 // something due at audio time t (s): strike i sounding, the melody pausing at i for the player (wait),
 // or a count-in beat (count = the number shown, counting down to 1)
@@ -33,7 +34,7 @@ interface Queued {
 // Web Audio lookahead scheduler: audio is timed by the AudioContext, the shown position follows via rAF.
 export function usePlayer(
   { piece, rpm, practice, waitForMe, metronome, hostVolume, minutes }: PlayerSettings,
-  { onTimeUp }: PlayerOptions = {},
+  { onTimeUp, onStart }: PlayerOptions = {},
 ) {
   const playing = shallowRef(false)
   const countdown = shallowRef(0) // count-in number on screen, 0 = none
@@ -130,6 +131,7 @@ export function usePlayer(
 
   // countIn: count the beats in with clicks first (Predvajaj); not when the player's own tap started it
   function play(from = 0, countIn = false) {
+    if (current.value < 0) onStart?.()
     const { ctx } = audio()
     next = from
     if (countIn) {

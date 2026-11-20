@@ -4,7 +4,7 @@
   display: grid;
   grid-template-columns: repeat(48, 1fr);
   grid-template-rows: repeat(
-    4,
+    var(--bells, 4),
     var(--cell, 23px)
   ); /* --cell: strike size, set by GridScore to fit the width */
   position: relative;
@@ -38,7 +38,7 @@
   background: none;
   border-bottom: 1px solid var(--ink);
 }
-:where(.drum) .line:nth-child(4) {
+:where(.drum) .line.last {
   border-bottom: 0;
 }
 :where(.drum) .line.now,

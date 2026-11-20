@@ -12,4 +12,10 @@ try {
 } catch {}
 
 // relative base so the build works on any static host / subpath (GitHub Pages, Netlify…)
-export default defineConfig({ plugins: [vue()], base: './', define: { __VERSION__: JSON.stringify(`${MAJOR}.${minor}`) } })
+// dev: /api goes to the Express server (npm run server)
+export default defineConfig({
+  plugins: [vue()],
+  base: './',
+  define: { __VERSION__: JSON.stringify(`${MAJOR}.${minor}`) },
+  server: { proxy: { '/api': 'http://localhost:3000' } },
+})
