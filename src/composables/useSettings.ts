@@ -2,7 +2,7 @@ import { shallowRef, computed, watch, type Ref } from 'vue'
 import { pieces, type Piece } from '../lib/melodies.ts'
 import { bellCount } from '../lib/notation.ts'
 
-export const TEMPOS = [150, 180, 210, 230] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
+export const TEMPOS = [165, 180, 210, 230] // udarcev na minuto, drsnik preklaplja med temi vrednostmi
 export type View = 'drum' | 'mala' | 'staff' | 'simple'
 export const VIEW_OPTIONS: { label: string; value: View }[] = [
   { label: 'Bobnarske note', value: 'drum' },
@@ -75,7 +75,7 @@ export function useSettings(all: Ref<Piece[]> = shallowRef(pieces)) {
     const stored = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}
     for (const [k, [r, ok]] of Object.entries(saved)) if (ok(stored[k])) r.value = stored[k]
     if (typeof stored.piece === 'string') pieceName.value = stored.piece
-  } catch {} // storage blocked (private mode) or unreadable: start with defaults
+  } catch { } // storage blocked (private mode) or unreadable: start with defaults
 
   // a piece with fewer bells (Renška): the chosen bell may not exist in it, then all bells play
   // an unknown name (renamed or deleted piece, or a user melody not loaded yet) plays the first piece
@@ -92,7 +92,7 @@ export function useSettings(all: Ref<Piece[]> = shallowRef(pieces)) {
     const out = Object.fromEntries(Object.entries(saved).map(([k, [r]]) => [k, r.value]))
     try {
       localStorage.setItem(KEY, JSON.stringify({ ...out, piece: pieceName.value }))
-    } catch {}
+    } catch { }
   })
 
   return {
